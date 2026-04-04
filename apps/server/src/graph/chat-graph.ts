@@ -37,7 +37,8 @@ function toLangChainMessages(messages: WireChatMessage[]) {
   });
 }
 
-const graph = new StateGraph(MessagesAnnotation)
+/** Compiled graph; use for `invoke` / streaming and for `getGraphAsync` + `drawMermaid`. */
+export const compiledChatGraph = new StateGraph(MessagesAnnotation)
   .addNode("model", async (state) => {
     const apiKey = process.env.OPENROUTER_API_KEY;
     if (!apiKey) {
@@ -68,7 +69,7 @@ const graph = new StateGraph(MessagesAnnotation)
   .compile();
 
 export async function invokeChatGraph(messages: WireChatMessage[]): Promise<string> {
-  const state = await graph.invoke({
+  const state = await compiledChatGraph.invoke({
     messages: [
       new SystemMessage(CHAT_SYSTEM_PROMPT),
       ...toLangChainMessages(messages),

@@ -16,7 +16,8 @@ This ADR is the **primary artifact** we keep current as the product evolves. The
 
 | Item | Location |
 |------|----------|
-| Graph definition + compile + `invokeChatGraph` | [`apps/server/src/graph/chat-graph.ts`](../apps/server/src/graph/chat-graph.ts) |
+| Graph definition + compile + `invokeChatGraph` | [`apps/server/src/graph/chat-graph.ts`](../apps/server/src/graph/chat-graph.ts) — exports `compiledChatGraph` |
+| Programmatic Mermaid + HTML wrapper | [`apps/server/src/graph/graph-diagram.ts`](../apps/server/src/graph/graph-diagram.ts) — `compiledChatGraph.getGraphAsync()` then `Graph.drawMermaid()` from `@langchain/core`; served at `GET /api/graph/diagram` |
 | System instructions (injected before invoke) | [`apps/server/src/prompts/chat.ts`](../apps/server/src/prompts/chat.ts) — `CHAT_SYSTEM_PROMPT` |
 
 ---
@@ -128,7 +129,7 @@ Keep these minimal in documentation; update only when they affect **how** the gr
 
 | Area | Role relative to the graph |
 |------|----------------------------|
-| **Fastify** (`apps/server/src/index.ts`) | Validates body, calls `invokeChatGraph`, maps errors to HTTP. |
+| **Fastify** (`apps/server/src/index.ts`) | Validates body, calls `invokeChatGraph`, maps errors to HTTP; graph viz at `GET /api/graph/diagram` (HTML), using LangGraph’s drawable graph API. |
 | **Zod** (`apps/server/src/schemas/chat.ts`) | Ensures wire roles are only `user` / `assistant` (no client `system`). |
 | **Welcome endpoint** | `GET /api/chat/welcome` serves static copy; **does not** run the graph. |
 | **Client** (`apps/chat`) | Fetches welcome, posts message history to `POST /api/chat`; dev Vite proxy forwards `/api` to the server. |
@@ -140,7 +141,7 @@ Keep these minimal in documentation; update only when they affect **how** the gr
 
 Update **this ADR** when you:
 
-- Add/remove/rename nodes or edges.
+- Add/remove/rename nodes or edges (Mermaid from `drawMermaid` updates automatically; refresh narrative diagrams in this ADR if you keep them).
 - Change state annotation or reducers.
 - Move system prompt injection (e.g. into a dedicated node).
 - Add tools, retrieval, branching, persistence, or streaming.

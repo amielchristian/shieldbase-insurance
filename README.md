@@ -6,6 +6,7 @@ Chat API (Fastify + LangGraph):
 
 - `GET /api/chat/welcome` — hardcoded first assistant message (copy in `apps/server/src/prompts/chat.ts`).
 - `POST /api/chat` — model reply; system prompt is injected on the server only (same prompts module).
+- `GET /api/graph/diagram` — HTML page that **renders** the chat graph as Mermaid (source from `compiledChatGraph.getGraphAsync().drawMermaid()`; open in a browser; proxied under `/api` in Vite dev).
 
 Set these before running `apps/server`:
 

@@ -3,6 +3,7 @@ import Fastify from "fastify";
 import dotenv from "dotenv";
 import fastifyCors from "@fastify/cors";
 import { invokeChatGraph } from "./graph/chat-graph.js";
+import { getChatGraphDiagramHtml } from "./graph/graph-diagram.js";
 import { CHAT_WELCOME_MESSAGE } from "./prompts/chat.js";
 import { chatBodySchema } from "./schemas/chat.js";
 import { echoBodySchema } from "./schemas/echo.js";
@@ -19,6 +20,10 @@ app.get("/api/chat/welcome", async () => ({
   role: "assistant" as const,
   content: CHAT_WELCOME_MESSAGE,
 }));
+
+app.get("/api/graph/diagram", async (_request, reply) => {
+  return reply.type("text/html; charset=utf-8").send(await getChatGraphDiagramHtml());
+});
 
 app.post("/echo", async (request, reply) => {
   const parsed = echoBodySchema.safeParse(request.body);
