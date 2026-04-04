@@ -515,7 +515,7 @@ export function formatQuote(product: QuoteProduct, quote: QuoteResult): string {
     .map((l) => `- ${l.label}: ${typeof l.amount === "number" ? l.amount.toFixed(2) : String(l.amount)}`)
     .join("\n");
   return [
-    `Here is your **${product}** quote (fictional demo):`,
+    `Here is your **${product}** quote (illustrative estimate):`,
     "",
     `- Monthly: **$${quote.monthlyPremium.toFixed(2)}**`,
     `- Annual: **$${quote.annualPremium.toFixed(2)}**`,

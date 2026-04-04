@@ -1,6 +1,6 @@
 # ShieldBase Insurance — Company Overview
 
-ShieldBase Insurance is a fictional regional carrier focused on straightforward coverage, digital-first service, and clear policy language. We underwrite personal lines for individuals and families in supported states, with licensed agents available by phone and chat.
+ShieldBase Insurance is a regional carrier focused on straightforward coverage, digital-first service, and clear policy language. We underwrite personal lines for individuals and families in supported states, with licensed agents available by phone and chat.
 
 ## Mission
 
@@ -23,4 +23,4 @@ We aim to make insurance easier to understand: what you pay, what is covered, an
 
 ## Important note
 
-ShieldBase is a fictional company for demonstration and testing. All names, numbers, and processes are illustrative only and do not constitute real insurance advice or binding offers.
+All names, numbers, and processes in this knowledge base are reference examples and do not replace personalized advice or your actual policy terms.

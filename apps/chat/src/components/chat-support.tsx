@@ -46,10 +46,10 @@ type ServerMeta = {
 } | null
 
 const SUGGESTIONS = [
-  'What do ShieldDrive tiers include?',
-  'What is excluded on a typical home policy?',
-  'How do I start a claim and what are the deadlines?',
-  'Do you offer bundling discounts?',
+  'What do ShieldDrive auto tiers include?',
+  'What is typically excluded on a home policy?',
+  'How do I file a claim and what are the deadlines?',
+  "I'd like a quote for auto insurance.",
 ] as const
 
 let idCounter = 0
@@ -202,11 +202,11 @@ export function ChatSupport() {
             <Card className="border-sidebar-border/80 bg-sidebar-accent/40 shadow-none">
               <CardHeader className="gap-1 px-4 py-3">
                 <CardTitle className="font-sans text-xs font-medium tracking-wide text-muted-foreground uppercase">
-                  Demo notice
+                  Disclaimer
                 </CardTitle>
                 <CardDescription className="text-xs leading-relaxed text-sidebar-foreground/85">
-                  ShieldBase is fictional. Answers are for UI and prototyping
-                  only—not real coverage or legal advice.
+                  Information here is general reference—not a substitute for your
+                  policy documents or advice from a licensed professional.
                 </CardDescription>
               </CardHeader>
             </Card>
@@ -252,9 +252,6 @@ export function ChatSupport() {
                   <span className="relative inline-flex size-2 rounded-full bg-primary" />
                 </span>
                 Online
-              </Badge>
-              <Badge variant="outline" className="text-muted-foreground">
-                Demo
               </Badge>
               {meta?.mode === 'quotation' ? (
                 <Button
@@ -307,8 +304,8 @@ export function ChatSupport() {
                   </CardContent>
                 </Card>
               ) : null}
-              <Card className="message-enter overflow-hidden border-border/70 bg-card/60 shadow-md backdrop-blur-sm">
-                <CardHeader className="gap-2 border-b border-border/50 bg-gradient-to-br from-primary/10 via-transparent to-accent/5 pb-4">
+              <Card className="message-enter gap-0 overflow-hidden border-border/70 bg-card/60 py-0 shadow-md backdrop-blur-sm">
+                <CardHeader className="gap-2 border-b border-border/50 bg-gradient-to-br from-primary/10 via-transparent to-accent/5 pt-6 pb-4">
                   <div className="flex items-center gap-2 text-primary">
                     <Sparkles className="size-4" aria-hidden />
                     <span className="text-xs font-semibold tracking-wide uppercase">
@@ -320,10 +317,11 @@ export function ChatSupport() {
                   </CardTitle>
                   <CardDescription className="text-sm leading-relaxed text-muted-foreground">
                     Try a suggestion below or describe your situation. The
-                    assistant pulls from the ShieldBase demo knowledge base.
+                    assistant answers from the ShieldBase knowledge base and can
+                    walk you through quotes for auto, home, or life.
                   </CardDescription>
                 </CardHeader>
-                <CardContent className="flex flex-wrap gap-2 pt-5">
+                <CardContent className="flex flex-wrap gap-2 pt-5 pb-6">
                   {SUGGESTIONS.map((s) => (
                     <Button
                       key={s}
@@ -467,7 +465,7 @@ function NavItem({
       </TooltipTrigger>
       <TooltipContent side="right" className="max-w-[220px] text-xs">
         {active
-          ? 'You are here. Other channels are visual placeholders in this demo.'
+          ? 'You are here. Other channels are not wired up in this chat experience yet.'
           : 'Coming soon in a full product build.'}
       </TooltipContent>
     </Tooltip>

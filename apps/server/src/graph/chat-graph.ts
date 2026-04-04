@@ -492,7 +492,7 @@ async function quoteConfirmNode(state: typeof ShieldBaseState.State) {
   if (isAcceptIntent(text)) {
     const done: QuoteState = { ...quote, active: false, step: "done", pendingField: null };
     const prompt =
-      "Great. In this demo I can’t bind coverage, but I’ve recorded your selection. If you want another quote, just say **quote** and the product type.";
+      "Great—I can’t bind coverage from chat, but I’ve recorded your selection. If you want another quote, just say **quote** and the product type.";
     return { messages: [new AIMessage(prompt)], quote: done, mode: "conversational" satisfies Mode, next: END };
   }
 
