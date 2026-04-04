@@ -22,6 +22,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
+import { postChat } from '@/lib/chat-api'
 import { cn } from '@/lib/utils'
 
 type Role = 'user' | 'assistant'
@@ -39,19 +40,6 @@ const SUGGESTIONS = [
   'Do you offer bundling discounts?',
 ] as const
 
-function replyFor(text: string): string {
-  const q = text.toLowerCase()
-  if (q.includes('tier') || q.includes('auto') || q.includes('drive'))
-    return 'ShieldDrive is offered in **Basic**, **Standard**, and **Comprehensive** tiers. Basic often meets state minimums with optional physical damage; Standard adds mid-range liability and typical collision/comprehensive deductibles; Comprehensive bundles higher limits plus common endorsements like rental and roadside. Your declarations page always wins—this is general info for our fictional demo.'
-  if (q.includes('home') || q.includes('exclude') || q.includes('property'))
-    return 'Typical ShieldHome policies cover the dwelling, other structures, personal property, loss of use, and liability—**but** flood, earthquake, and gradual maintenance issues are usually excluded unless you buy separate coverage. Review your form (named vs. open perils) and any special limits for jewelry or cash.'
-  if (q.includes('claim') || q.includes('deadline') || q.includes('file'))
-    return 'Report incidents as soon as you can—many contracts expect notice within **72 hours** for property/auto-style losses (theft timelines can differ). If we request a proof of loss, return it by the date on the form. For life claims, beneficiaries should start the packet soon after the event; payout timing follows review. (Fictional ShieldBase process for this UI demo.)'
-  if (q.includes('bundl') || q.includes('discount'))
-    return 'In our demo knowledge base, bundling **auto + home** or **auto + renters** often earns a combined discount in the **8–15%** range versus standalone pricing—actual savings depend on underwriting and state filing. Safe-driver and multi-vehicle discounts may also apply where available.'
-  return "Thanks for reaching out. I'm a **demo assistant** for fictional ShieldBase Insurance. Ask about auto, home, or life products, tiers, exclusions, claims, or discounts—or say **human** to see how a handoff might look in a full build."
-}
-
 let idCounter = 0
 function nextId() {
   idCounter += 1
@@ -65,7 +53,7 @@ export function ChatSupport() {
       id: nextId(),
       role: 'assistant',
       content:
-        "Welcome to **ShieldBase** AI support. I'm here to explain our fictional auto, home, and life products, coverage ideas, and claims flow. What would you like to know?",
+        "Welcome to **ShieldBase** AI support. I'm here to help you with your healthcare needs.",
     },
   ])
   const [draft, setDraft] = useState('')
@@ -76,19 +64,46 @@ export function ChatSupport() {
     endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
   }, [messages, busy])
 
-  function send(text: string) {
+  async function send(text: string) {
     const trimmed = text.trim()
     if (!trimmed || busy) return
+
+    const userMessage: ChatMessage = {
+      id: nextId(),
+      role: 'user',
+      content: trimmed,
+    }
+    const requestMessages = [...messages, userMessage].map((message) => ({
+      role: message.role,
+      content: message.content,
+    }))
+
     setDraft('')
-    setMessages((m) => [...m, { id: nextId(), role: 'user', content: trimmed }])
+    setMessages((m) => [...m, userMessage])
     setBusy(true)
-    window.setTimeout(() => {
+
+    try {
+      const response = await postChat(requestMessages)
       setMessages((m) => [
         ...m,
-        { id: nextId(), role: 'assistant', content: replyFor(trimmed) },
+        {
+          id: nextId(),
+          role: 'assistant',
+          content: response.content,
+        },
       ])
+    } catch (error) {
+      const message =
+        error instanceof Error && error.message.trim()
+          ? error.message
+          : 'Something went wrong while contacting support.'
+      setMessages((m) => [
+        ...m,
+        { id: nextId(), role: 'assistant', content: `Error: ${message}` },
+      ])
+    } finally {
       setBusy(false)
-    }, 780)
+    }
   }
 
   return (

@@ -1,5 +1,16 @@
 # Turborepo starter
 
+## ShieldBase chat environment
+
+For the Fastify + LangGraph chat route (`/api/chat`), set these variables before running `apps/server`:
+
+- `OPENROUTER_API_KEY` (required)
+- `OPENROUTER_MODEL` (optional, defaults to `openai/gpt-4o-mini`)
+- `OPENROUTER_HTTP_REFERER` (optional)
+- `OPENROUTER_APP_NAME` (optional)
+
+The chat client uses `/api/chat` and proxies to `http://localhost:3001` in Vite by default. Override proxy target with `VITE_SERVER_URL` if needed.
+
 This Turborepo starter is maintained by the Turborepo core team.
 
 ## Using this example
