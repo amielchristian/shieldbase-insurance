@@ -47,7 +47,7 @@ describe("http routes", () => {
       (input: { sessionId: string; messages: WireChatMessage[] }) => Promise<ChatResponse>
     >(async () => ({
       content: "Mocked response",
-      meta: { mode: "conversational", quote: null },
+      meta: { mode: "conversational", quote: null, retrieval: null },
     }));
 
     const app = await buildServer({ logger: false, invokeGraph });
@@ -62,7 +62,7 @@ describe("http routes", () => {
     const body = response.json();
     expect(body.role).toBe("assistant");
     expect(body.content).toBe("Mocked response");
-    expect(body.meta).toEqual({ mode: "conversational", quote: null });
+    expect(body.meta).toEqual({ mode: "conversational", quote: null, retrieval: null });
     expect(typeof body.sessionId).toBe("string");
     expect(body.sessionId.length).toBeGreaterThan(0);
     expect(invokeGraph).toHaveBeenCalledTimes(1);

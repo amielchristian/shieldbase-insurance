@@ -16,6 +16,12 @@ Set these before running `apps/server`:
 - `OPENROUTER_HTTP_REFERER` (optional)
 - `OPENROUTER_APP_NAME` (optional)
 
+RAG tuning (optional):
+
+- `RAG_MIN_COSINE_SIMILARITY` — minimum cosine similarity for dense retrieval before hybrid merge (default `0.25`; if no chunk passes, the best match is kept).
+- `RAG_RRF_K` — reciprocal rank fusion constant (default `60`).
+- `RAG_EMBEDDING_CACHE_DIR` — directory for embedding disk cache (default `~/.cache/shieldbase-rag`). Omit or clear to rebuild embeddings after KB changes.
+
 The chat client uses `/api/chat` and proxies to `http://localhost:3001` in Vite by default. Override proxy target with `VITE_SERVER_URL` if needed.
 
 ### Optional embed (bonus)

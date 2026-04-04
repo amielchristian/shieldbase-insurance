@@ -27,5 +27,13 @@ describe("invokeChatGraph with mocked OpenRouter dependencies", () => {
     expect(result.content).toContain("Mocked grounded response.");
     expect(result.meta.mode).toBe("conversational");
     expect(result.meta.quote).toBeNull();
+    expect(result.meta.retrieval).not.toBeNull();
+    expect(result.meta.retrieval!.length).toBeGreaterThan(0);
+    expect(result.meta.retrieval![0]).toMatchObject({
+      id: expect.any(String),
+      title: expect.any(String),
+      sourcePath: expect.any(String),
+      score: expect.any(Number),
+    });
   });
 });

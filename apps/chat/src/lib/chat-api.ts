@@ -16,6 +16,12 @@ type ChatApiResponse = {
       step: string;
       missingFields: string[];
     };
+    retrieval?: null | Array<{
+      id: string;
+      title: string;
+      sourcePath: string;
+      score: number;
+    }>;
   };
 };
 
