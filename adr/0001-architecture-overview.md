@@ -8,7 +8,12 @@ Accepted
 
 This ADR is the **primary artifact** we keep current as the product evolves. The **compiled LangGraph** in `apps/server/src/graph/chat-graph.ts` is the source of truth for how a chat turn is orchestrated. HTTP (Fastify), the React client, and shared packages are **auxiliary**: they deliver bytes to and from the graph but do not define orchestration logic.
 
-**Non-goals in the current graph (document explicitly when you change them):** no checkpointer, no branching routers, no human-in-the-loop interrupts, no tool nodes, no streaming events—only a single LLM node and linear control flow.
+This project implements a **hybrid chatbot**:
+
+- **Conversational mode (RAG):** answers are grounded in the repo’s `knowledge-base/*.md`.
+- **Transactional mode (quotation flow):** a structured, validated workflow for auto/home/life quotes.
+- **Graceful transitions:** while quoting, users can ask KB questions and then continue without losing collected fields.
+- **Stateful sessions:** a `sessionId` maps to LangGraph `thread_id` and persists state in-memory via `MemorySaver`.
 
 ---
 
@@ -18,61 +23,54 @@ This ADR is the **primary artifact** we keep current as the product evolves. The
 |------|----------|
 | Graph definition + compile + `invokeChatGraph` | [`apps/server/src/graph/chat-graph.ts`](../apps/server/src/graph/chat-graph.ts) — exports `compiledChatGraph` |
 | Programmatic Mermaid + HTML wrapper | [`apps/server/src/graph/graph-diagram.ts`](../apps/server/src/graph/graph-diagram.ts) — `compiledChatGraph.getGraphAsync()` then `Graph.drawMermaid()` from `@langchain/core`; served at `GET /api/graph/diagram` |
-| System instructions (injected before invoke) | [`apps/server/src/prompts/chat.ts`](../apps/server/src/prompts/chat.ts) — `CHAT_SYSTEM_PROMPT` |
+| Prompt copy | [`apps/server/src/prompts/chat.ts`](../apps/server/src/prompts/chat.ts) — `CHAT_SYSTEM_PROMPT`, `RAG_SYSTEM_PROMPT` |
 
 ---
 
 ## Graph topology
 
-The runtime object is a **`StateGraph`** built on **`MessagesAnnotation`**: state is primarily the **`messages`** channel (LangChain message list with the default append reducer).
+The runtime object is a **`StateGraph`** built on a custom **`Annotation.Root`** state definition.
+
+**Persistence**
+
+- The compiled graph is created with a **`MemorySaver` checkpointer**.
+- Each request passes `configurable.thread_id = sessionId`, making state persistent across turns (until server restart).
+
+**State channels (conceptual)**
+
+- `messages`: LangChain messages (Human/AI) with `messagesStateReducer` (append semantics).
+- `mode`: `"conversational" | "quotation"`.
+- `route`: router output for the current turn (`rag | quote | quote_rag_interrupt | restart`).
+- `retrieval`: last retrieved KB chunks (for grounding).
+- `quote`: structured quote state: `{ active, product, step, data, lastQuote }`.
 
 **Nodes**
 
 | Node id | Responsibility |
 |---------|----------------|
-| `model` | Read `state.messages`, call `ChatOpenAI.invoke`, return `{ messages: [response] }` so the new assistant turn is appended to state. |
+| `intent_router` | Detect intent for the current user message and set `state.route`. |
+| `rag_retrieve` | Retrieve top-K KB chunks (vector store when available; keyword fallback otherwise). |
+| `rag_answer` | Call the LLM with KB excerpts and emit one assistant message (also appends the “back to quote” prompt during interrupts). |
+| `quote_entry` | Enter the quote lane and dispatch to the correct quote step (based on `quote.step`, with restart handling). |
+| `quote_identify_product` | Determine product type or ask the user to pick auto/home/life. |
+| `quote_collect_details` | Extract/collect fields, ask the next missing field, or advance to validation. |
+| `quote_validate` | Validate inputs (Zod); ask for corrections or advance to generation. |
+| `quote_generate` | Compute deterministic dummy quote + breakdown and present it. |
+| `quote_confirm` | Handle accept/adjust/start-over/switch-product. |
 
 **Edges**
 
-| From | To |
-|------|-----|
-| `START` | `model` |
-| `model` | `END` |
+High-level flow:
+
+- `START -> intent_router`
+- Conditional:
+  - `rag` and `quote_rag_interrupt`: `rag_retrieve -> rag_answer -> END`
+  - `quote` and `restart`: `quote_entry -> (quote step nodes) -> END`
 
 **Lifecycle**
 
 - The graph is **compiled once** at module load (`const graph = ... .compile()`).
-- Each HTTP chat request calls **`invokeChatGraph(wireMessages)`**, which builds the **initial** message list (see next section) and runs **`graph.invoke({ messages: [...] })`** once.
-
-### Diagram: control flow inside the compiled graph
-
-```mermaid
-flowchart TB
-  subgraph stateGraph [StateGraph_MessagesAnnotation]
-    direction TB
-    entry[[START]]
-    modelNode["model"]
-    exit[[END]]
-    entry --> modelNode
-    modelNode --> exit
-  end
-```
-
-### Diagram: what happens inside the `model` node
-
-```mermaid
-flowchart LR
-  subgraph modelNodeDetail [model_node]
-    direction TB
-    readState["read_state.messages"]
-    buildClient["ChatOpenAI_OpenRouter_config"]
-    callLLM["model.invoke_messages"]
-    emitDelta["return_messages_AIMessage_only"]
-    readState --> buildClient
-    buildClient --> callLLM
-    callLLM --> emitDelta
-  end
-```
+- Each HTTP chat request calls **`invokeChatGraph({ sessionId, messages })`** and runs **`graph.invoke({ messages })`** with `thread_id = sessionId`.
 
 OpenRouter is reached via `configuration.baseURL` = `https://openrouter.ai/api/v1` and `OPENROUTER_API_KEY`. Optional headers: `HTTP-Referer`, `X-Title` from env.
 
@@ -80,32 +78,12 @@ OpenRouter is reached via `configuration.baseURL` = `https://openrouter.ai/api/v
 
 ## Message assembly and extraction (invoke boundary)
 
-**Important distinction:** `CHAT_SYSTEM_PROMPT` is **not** added inside the `model` node. It is prepended in **`invokeChatGraph`** before `graph.invoke`. The graph’s `model` node only sees whatever is already in `state.messages` (system + human/ai turns).
+Wire format from the HTTP layer includes a `sessionId` plus a list of new messages:
 
-Wire format from the HTTP layer: `{ role: "user" | "assistant", content: string }[]` — mapped to `HumanMessage` / `AIMessage`.
+- Request: `{ sessionId?: string, messages: { role: "user" | "assistant", content: string }[] }`
+- The server treats the graph as **stateful**: the client should send **new messages for the turn**, not the full history.
 
-### Diagram: end-to-end message flow for one `invoke`
-
-```mermaid
-sequenceDiagram
-  participant Entry as invokeChatGraph
-  participant Assemble as message_assembly
-  participant LG as compiled_graph
-  participant Node as model_node
-  participant OR as OpenRouter
-
-  Entry->>Assemble: wire_messages_from_HTTP
-  Assemble->>Assemble: SystemMessage_CHAT_SYSTEM_PROMPT
-  Assemble->>Assemble: plus_Human_and_AI_from_wire
-  Entry->>LG: invoke_initial_state
-  LG->>Node: run_with_state.messages
-  Node->>OR: ChatOpenAI_invoke
-  OR-->>Node: AIMessage
-  Node-->>LG: reducer_appends_AI_turn
-  LG-->>Entry: final_state_messages
-  Entry->>Entry: scan_reverse_for_last_AI
-  Entry-->>Entry: toStringContent_for_HTTP
-```
+System prompts are not stored in `state.messages`. Nodes that call the LLM assemble prompts internally (see `rag_answer` in `apps/server/src/graph/chat-graph.ts`).
 
 ### Extraction rule
 
@@ -115,11 +93,7 @@ After `invoke`, the HTTP layer uses the **last message** in final state whose `g
 
 ## State shape (conceptual)
 
-`MessagesAnnotation` tracks:
-
-- **`messages`**: ordered list of LangChain messages; each `model` invocation appends the new assistant message per the node return value.
-
-There is **no** custom channel (e.g. `retrievalContext`, `toolCalls`) in the current graph—adding one is a deliberate ADR-worthy change.
+See “State channels” above. The key point: `quote` and `retrieval` are first-class state channels, not inferred from the text history.
 
 ---
 
@@ -132,7 +106,7 @@ Keep these minimal in documentation; update only when they affect **how** the gr
 | **Fastify** (`apps/server/src/index.ts`) | Validates body, calls `invokeChatGraph`, maps errors to HTTP; graph viz at `GET /api/graph/diagram` (HTML), using LangGraph’s drawable graph API. |
 | **Zod** (`apps/server/src/schemas/chat.ts`) | Ensures wire roles are only `user` / `assistant` (no client `system`). |
 | **Welcome endpoint** | `GET /api/chat/welcome` serves static copy; **does not** run the graph. |
-| **Client** (`apps/chat`) | Fetches welcome, posts message history to `POST /api/chat`; dev Vite proxy forwards `/api` to the server. |
+| **Client** (`apps/chat`) | Fetches welcome, stores `sessionId` in `localStorage`, posts **new turn messages** to `POST /api/chat`; dev Vite proxy forwards `/api` to the server. |
 | **Monorepo** | pnpm workspaces + Turbo; graph code lives under `apps/server`. |
 
 ---

@@ -23,6 +23,7 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip'
 import { fetchWelcomeMessage, postChat } from '@/lib/chat-api'
+import { renderMarkdown } from '@/lib/markdown'
 import { cn } from '@/lib/utils'
 
 type Role = 'user' | 'assistant'
@@ -32,6 +33,17 @@ type ChatMessage = {
   role: Role
   content: string
 }
+
+type QuoteMeta = null | {
+  product?: 'auto' | 'home' | 'life'
+  step: string
+  missingFields: string[]
+}
+
+type ServerMeta = {
+  mode?: 'conversational' | 'quotation'
+  quote?: QuoteMeta
+} | null
 
 const SUGGESTIONS = [
   'What do ShieldDrive tiers include?',
@@ -52,7 +64,19 @@ export function ChatSupport() {
   const [welcomeLoading, setWelcomeLoading] = useState(true)
   const [draft, setDraft] = useState('')
   const [busy, setBusy] = useState(false)
+  const [busyLabel, setBusyLabel] = useState<string>('ShieldBase is drafting a response…')
+  const [sessionId, setSessionId] = useState<string | null>(null)
+  const [meta, setMeta] = useState<ServerMeta>(null)
   const endRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    try {
+      const existing = localStorage.getItem('shieldbase:sessionId')
+      if (existing) setSessionId(existing)
+    } catch {
+      // Ignore storage access errors.
+    }
+  }, [])
 
   useEffect(() => {
     let cancelled = false
@@ -88,22 +112,34 @@ export function ChatSupport() {
     const trimmed = text.trim()
     if (!trimmed || busy || welcomeLoading) return
 
+    setBusyLabel(
+      /\bquote\b|\bpremium\b|\bcost\b|\bprice\b/i.test(trimmed)
+        ? 'ShieldBase is calculating a quote…'
+        : 'ShieldBase is drafting a response…',
+    )
+
     const userMessage: ChatMessage = {
       id: nextId(),
       role: 'user',
       content: trimmed,
     }
-    const requestMessages = [...messages, userMessage].map((message) => ({
-      role: message.role,
-      content: message.content,
-    }))
+    const requestMessages = [{ role: 'user' as const, content: trimmed }]
 
     setDraft('')
     setMessages((m) => [...m, userMessage])
     setBusy(true)
 
     try {
-      const response = await postChat(requestMessages)
+      const response = await postChat({ sessionId: sessionId ?? undefined, messages: requestMessages })
+      if (typeof response.sessionId === 'string' && response.sessionId.trim()) {
+        setSessionId(response.sessionId)
+        try {
+          localStorage.setItem('shieldbase:sessionId', response.sessionId)
+        } catch {
+          // Ignore storage access errors.
+        }
+      }
+      setMeta(response.meta ?? null)
       setMessages((m) => [
         ...m,
         {
@@ -199,6 +235,14 @@ export function ChatSupport() {
               </div>
             </div>
             <div className="flex shrink-0 items-center gap-2">
+              {meta?.mode === 'quotation' ? (
+                <Badge
+                  variant="secondary"
+                  className="hidden border border-accent/35 bg-accent/15 font-medium text-accent-foreground sm:inline-flex"
+                >
+                  Quote flow
+                </Badge>
+              ) : null}
               <Badge
                 variant="secondary"
                 className="hidden border border-primary/25 bg-primary/15 font-medium text-primary sm:inline-flex"
@@ -212,11 +256,57 @@ export function ChatSupport() {
               <Badge variant="outline" className="text-muted-foreground">
                 Demo
               </Badge>
+              {meta?.mode === 'quotation' ? (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="hidden h-8 px-3 text-xs sm:inline-flex"
+                  onClick={() => send('start over')}
+                  disabled={busy || welcomeLoading}
+                >
+                  Start over
+                </Button>
+              ) : null}
             </div>
           </header>
 
           <ScrollArea className="min-h-0 min-w-0 flex-1 overflow-hidden [&>[data-slot=scroll-area-viewport]]:scroll-smooth">
             <div className="mx-auto flex max-w-3xl flex-col gap-6 px-4 py-8 md:px-8">
+              {meta?.quote ? (
+                <Card className="message-enter border-border/70 bg-card/55 shadow-sm backdrop-blur-sm">
+                  <CardHeader className="gap-1">
+                    <CardTitle className="font-serif text-base">
+                      Quote progress
+                    </CardTitle>
+                    <CardDescription className="text-sm">
+                      {meta.quote.product ? (
+                        <span className="font-medium capitalize">
+                          {meta.quote.product}
+                        </span>
+                      ) : (
+                        <span className="font-medium">Choosing a product</span>
+                      )}{' '}
+                      · step <span className="font-mono text-xs">{meta.quote.step}</span>
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="pt-0">
+                    {meta.quote.missingFields?.length ? (
+                      <div className="flex flex-wrap gap-2">
+                        {meta.quote.missingFields.slice(0, 6).map((f) => (
+                          <Badge key={f} variant="outline" className="text-xs">
+                            {f}
+                          </Badge>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-sm text-muted-foreground">
+                        No missing fields detected.
+                      </p>
+                    )}
+                  </CardContent>
+                </Card>
+              ) : null}
               <Card className="message-enter overflow-hidden border-border/70 bg-card/60 shadow-md backdrop-blur-sm">
                 <CardHeader className="gap-2 border-b border-border/50 bg-gradient-to-br from-primary/10 via-transparent to-accent/5 pb-4">
                   <div className="flex items-center gap-2 text-primary">
@@ -280,7 +370,7 @@ export function ChatSupport() {
                     className="size-4 shrink-0 animate-spin text-primary"
                     aria-hidden
                   />
-                  <span>ShieldBase is drafting a response…</span>
+                  <span>{busyLabel}</span>
                 </div>
               ) : null}
               <div ref={endRef} />
@@ -423,20 +513,5 @@ function MessageRow({ message }: { message: ChatMessage }) {
 }
 
 function MessageBody({ text }: { text: string }) {
-  const parts = text.split(/(\*\*[^*]+\*\*)/g)
-  return (
-    <p className="whitespace-pre-wrap">
-      {parts.map((part, i) => {
-        if (part.startsWith('**') && part.endsWith('**')) {
-          const inner = part.slice(2, -2)
-          return (
-            <strong key={i} className="font-semibold text-foreground">
-              {inner}
-            </strong>
-          )
-        }
-        return <span key={i}>{part}</span>
-      })}
-    </p>
-  )
+  return <div className="markdown-body">{renderMarkdown(text)}</div>
 }

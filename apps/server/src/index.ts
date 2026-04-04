@@ -1,4 +1,5 @@
 import { fileURLToPath } from "node:url";
+import { randomUUID } from "node:crypto";
 import Fastify from "fastify";
 import dotenv from "dotenv";
 import fastifyCors from "@fastify/cors";
@@ -46,8 +47,12 @@ app.post("/api/chat", async (request, reply) => {
   }
 
   try {
-    const content = await invokeChatGraph(parsed.data.messages);
-    return { role: "assistant", content };
+    const sessionId = parsed.data.sessionId ?? randomUUID();
+    const response = await invokeChatGraph({
+      sessionId,
+      messages: parsed.data.messages,
+    });
+    return { role: "assistant", ...response, sessionId };
   } catch (error) {
     const message = error instanceof Error ? error.message : "Chat service failed";
     const statusCode = message.includes("OPENROUTER_API_KEY") ? 500 : 502;

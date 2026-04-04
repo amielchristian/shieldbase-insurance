@@ -5,17 +5,30 @@
 Chat API (Fastify + LangGraph):
 
 - `GET /api/chat/welcome` — hardcoded first assistant message (copy in `apps/server/src/prompts/chat.ts`).
-- `POST /api/chat` — model reply; system prompt is injected on the server only (same prompts module).
+- `POST /api/chat` — hybrid reply (RAG + quoting); expects a `sessionId` for stateful sessions and returns `{ content, meta, sessionId }`.
 - `GET /api/graph/diagram` — HTML page that **renders** the chat graph as Mermaid (source from `compiledChatGraph.getGraphAsync().drawMermaid()`; open in a browser; proxied under `/api` in Vite dev).
 
 Set these before running `apps/server`:
 
 - `OPENROUTER_API_KEY` (required)
 - `OPENROUTER_MODEL` (optional, defaults to `openai/gpt-4o-mini`)
+- `OPENROUTER_EMBEDDINGS_MODEL` (optional, defaults to `text-embedding-3-small`)
 - `OPENROUTER_HTTP_REFERER` (optional)
 - `OPENROUTER_APP_NAME` (optional)
 
 The chat client uses `/api/chat` and proxies to `http://localhost:3001` in Vite by default. Override proxy target with `VITE_SERVER_URL` if needed.
+
+### Optional embed (bonus)
+
+You can embed the chat UI in another site via an iframe (example):
+
+```html
+<iframe
+  src="http://localhost:5173"
+  style="width: 420px; height: 640px; border: 0; border-radius: 16px;"
+  title="ShieldBase chat widget"
+></iframe>
+```
 
 This Turborepo starter is maintained by the Turborepo core team.
 

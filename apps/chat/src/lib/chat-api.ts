@@ -8,6 +8,15 @@ export type ChatWireMessage = {
 type ChatApiResponse = {
   role: "assistant";
   content: string;
+  sessionId: string;
+  meta?: {
+    mode?: "conversational" | "quotation";
+    quote?: null | {
+      product?: "auto" | "home" | "life";
+      step: string;
+      missingFields: string[];
+    };
+  };
 };
 
 export async function fetchWelcomeMessage(): Promise<string> {
@@ -22,13 +31,16 @@ export async function fetchWelcomeMessage(): Promise<string> {
   return data.content;
 }
 
-export async function postChat(messages: ChatWireMessage[]): Promise<ChatApiResponse> {
+export async function postChat(args: {
+  sessionId?: string;
+  messages: ChatWireMessage[];
+}): Promise<ChatApiResponse> {
   const response = await fetch("/api/chat", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ messages }),
+    body: JSON.stringify({ sessionId: args.sessionId, messages: args.messages }),
   });
 
   if (!response.ok) {

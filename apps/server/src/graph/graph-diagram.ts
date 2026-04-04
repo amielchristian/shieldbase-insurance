@@ -41,7 +41,7 @@ export async function getChatGraphDiagramHtml(): Promise<string> {
     Diagram generated at request time from
     <code>compiledChatGraph.getGraphAsync()</code> and
     <code>drawMermaid()</code> (see <code>apps/server/src/graph/graph-diagram.ts</code>).
-    <code>CHAT_SYSTEM_PROMPT</code> is prepended in <code>invokeChatGraph</code> before <code>invoke</code>, not inside the <code>model</code> node, so it does not appear in this graph view.
+    System prompts and routing happen inside graph nodes (see <code>apps/server/src/graph/chat-graph.ts</code>), so they appear only as node behavior, not as separate nodes in this diagram.
   </p>
   <h2>Graph structure</h2>
   <div class="mermaid">${mermaidSource}</div>

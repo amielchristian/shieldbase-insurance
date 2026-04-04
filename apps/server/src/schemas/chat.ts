@@ -6,6 +6,7 @@ export const chatMessageSchema = z.object({
 });
 
 export const chatBodySchema = z.object({
+  sessionId: z.string().min(1).optional(),
   messages: z.array(chatMessageSchema).min(1),
 });
 
