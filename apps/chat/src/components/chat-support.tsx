@@ -22,7 +22,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
-import { fetchWelcomeMessage, postChat } from '@/lib/chat-api'
+import { fetchWelcomeMessage, postChat, postClearQuote } from '@/lib/chat-api'
 import { renderMarkdown } from '@/lib/markdown'
 import { cn } from '@/lib/utils'
 
@@ -36,18 +36,23 @@ type ChatMessage = {
 
 type QuoteMeta = null | {
   product?: 'auto' | 'home' | 'life'
+  status?: 'inactive' | 'drafting' | 'review' | 'quoted'
   step: string
   missingFields: string[]
 }
 
 type ServerMeta = {
   mode?: 'conversational' | 'quotation'
+  resetSession?: boolean
   quote?: QuoteMeta
 } | null
 
+/** Quick-start prompts aligned with README assessment examples and `knowledge-base/*.md`. */
 const SUGGESTIONS = [
-  'What do ShieldDrive auto tiers include?',
-  'What is typically excluded on a home policy?',
+  'What types of insurance do you offer?',
+  'What does your auto policy cover?',
+  "What's the difference between liability and comprehensive auto coverage?",
+  'What is typically excluded on term life policies?',
   'How do I file a claim and what are the deadlines?',
   "I'd like a quote for auto insurance.",
 ] as const
@@ -148,11 +153,55 @@ export function ChatSupport() {
           content: response.content,
         },
       ])
+
+      if (response.meta?.resetSession) {
+        try {
+          localStorage.removeItem('shieldbase:sessionId')
+        } catch {
+          // Ignore storage access errors.
+        }
+        setSessionId(null)
+        setMeta(null)
+      }
     } catch (error) {
       const message =
         error instanceof Error && error.message.trim()
           ? error.message
           : 'Something went wrong while contacting support.'
+      setMessages((m) => [
+        ...m,
+        { id: nextId(), role: 'assistant', content: `Error: ${message}` },
+      ])
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function clearQuote() {
+    if (busy || welcomeLoading) return
+    if (!sessionId) {
+      setMeta(null)
+      setMessages((m) => [
+        ...m,
+        { id: nextId(), role: 'assistant', content: 'Quote cleared.' },
+      ])
+      return
+    }
+
+    setBusy(true)
+    setBusyLabel('ShieldBase is clearing your quote…')
+    try {
+      const response = await postClearQuote({ sessionId })
+      setMeta(response.meta ?? null)
+      setMessages((m) => [
+        ...m,
+        { id: nextId(), role: 'assistant', content: response.content },
+      ])
+    } catch (error) {
+      const message =
+        error instanceof Error && error.message.trim()
+          ? error.message
+          : 'Something went wrong while clearing the quote.'
       setMessages((m) => [
         ...m,
         { id: nextId(), role: 'assistant', content: `Error: ${message}` },
@@ -263,6 +312,18 @@ export function ChatSupport() {
                   disabled={busy || welcomeLoading}
                 >
                   Start over
+                </Button>
+              ) : null}
+              {meta?.mode === 'quotation' ? (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="hidden h-8 px-3 text-xs sm:inline-flex"
+                  onClick={clearQuote}
+                  disabled={busy || welcomeLoading}
+                >
+                  Clear quote
                 </Button>
               ) : null}
             </div>

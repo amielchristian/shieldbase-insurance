@@ -6,6 +6,7 @@ export type CoverageLevel = "basic" | "standard" | "comprehensive";
 export type QuoteStep =
   | "identify_product"
   | "collect_details"
+  | "review"
   | "validate"
   | "generate"
   | "confirm"
@@ -55,6 +56,8 @@ export type QuoteResult = {
 
 export type QuoteState = {
   active: boolean;
+  status: "inactive" | "drafting" | "review" | "quoted";
+  lastUpdatedAt: string;
   product: QuoteProduct | null;
   step: QuoteStep;
   pendingField: string | null;
@@ -65,6 +68,8 @@ export type QuoteState = {
 export function createInitialQuoteState(): QuoteState {
   return {
     active: false,
+    status: "inactive",
+    lastUpdatedAt: new Date().toISOString(),
     product: null,
     step: "identify_product",
     pendingField: null,
@@ -527,9 +532,65 @@ export function formatQuote(product: QuoteProduct, quote: QuoteResult): string {
   ].join("\n");
 }
 
+export function formatQuoteDraftSummary(product: QuoteProduct, data: QuoteDataByProduct): string {
+  if (product === "auto") {
+    const d = data.auto;
+    return [
+      "**Auto quote details**",
+      `- Vehicle: ${d.vehicleYear ?? "?"} ${d.make ?? "?"} ${d.model ?? "?"}`.trim(),
+      `- Driver age: ${d.driverAge ?? "?"}`,
+      `- Driving history: ${d.drivingHistory ?? "?"}`,
+      `- Coverage level: ${d.coverageLevel ?? "?"}`,
+    ].join("\n");
+  }
+  if (product === "home") {
+    const d = data.home;
+    return [
+      "**Home quote details**",
+      `- Property type: ${d.propertyType ?? "?"}`,
+      `- Location: ${d.location ?? "?"}`,
+      `- Estimated value: ${d.estimatedValue ?? "?"}`,
+      `- Coverage level: ${d.coverageLevel ?? "?"}`,
+    ].join("\n");
+  }
+  const d = data.life;
+  return [
+    "**Life quote details**",
+    `- Age: ${d.age ?? "?"}`,
+    `- Health status: ${d.healthStatus ?? "?"}`,
+    `- Coverage amount: ${d.coverageAmount ?? "?"}`,
+    `- Term length (years): ${d.termLengthYears ?? "?"}`,
+  ].join("\n");
+}
+
 export function isRestartIntent(text: string): boolean {
   const t = text.toLowerCase();
   return /\b(start over|restart|reset|new quote)\b/.test(t);
+}
+
+export function isCancelIntent(text: string): boolean {
+  const t = text.toLowerCase().trim();
+  return /\b(cancel|never mind|nevermind|stop|exit|quit|forget (the )?quote|don'?t want (a )?quote|no quote)\b/.test(t);
+}
+
+export function isPauseIntent(text: string): boolean {
+  const t = text.toLowerCase().trim();
+  return /\b(finish later|save for later|pause|we'?ll do this later|do this later|later)\b/.test(t);
+}
+
+export function isDeleteDataIntent(text: string): boolean {
+  const t = text.toLowerCase().trim();
+  return /\b(delete my data|forget me|erase (my )?(data|chat)|delete this chat|remove my information)\b/.test(t);
+}
+
+export function isConfirmIntent(text: string): boolean {
+  const t = text.toLowerCase().trim();
+  return /\b(confirm|looks (right|good)|that'?s right|proceed|continue)\b/.test(t);
+}
+
+export function isEditIntent(text: string): boolean {
+  const t = text.toLowerCase().trim();
+  return /\b(go back|back|previous|edit|change|update)\b/.test(t);
 }
 
 export function isAcceptIntent(text: string): boolean {
@@ -548,5 +609,5 @@ export function isResumeIntent(text: string): boolean {
 }
 
 export function isResumableDraft(quote: QuoteState): boolean {
-  return !quote.active && quote.step !== "done" && quote.product !== null;
+  return quote.status === "inactive" && !quote.active && quote.step !== "done" && quote.product !== null;
 }

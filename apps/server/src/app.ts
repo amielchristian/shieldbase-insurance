@@ -1,11 +1,15 @@
 import { randomUUID } from "node:crypto";
 import Fastify, { type FastifyBaseLogger, type FastifyInstance } from "fastify";
 import fastifyCors from "@fastify/cors";
-import { invokeChatGraph, type ChatResponse, type WireChatMessage } from "./graph/chat-graph.js";
+import { END } from "@langchain/langgraph";
+import { compiledChatGraph, invokeChatGraph, type ChatResponse, type WireChatMessage } from "./graph/chat-graph.js";
 import { getChatGraphDiagramHtml } from "./graph/graph-diagram.js";
 import { CHAT_WELCOME_MESSAGE } from "./prompts/chat.js";
+import { createInitialQuoteState } from "./quote/quote.js";
 import { chatBodySchema } from "./schemas/chat.js";
 import { echoBodySchema } from "./schemas/echo.js";
+import { redactForLogs } from "./logging/redact.js";
+import { z } from "zod";
 
 type ChatGraphInvoker = (input: {
   sessionId: string;
@@ -60,6 +64,23 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
         sessionId,
         messages: parsed.data.messages,
       });
+      const userText = parsed.data.messages[parsed.data.messages.length - 1]?.content ?? "";
+      request.log.info(
+        {
+          sessionId,
+          user: redactForLogs(userText),
+          mode: response.meta.mode,
+          quote: response.meta.quote
+            ? {
+                status: (response.meta.quote as any).status,
+                product: response.meta.quote.product,
+                step: response.meta.quote.step,
+              }
+            : null,
+          resetSession: (response.meta as any).resetSession ?? false,
+        },
+        "Chat response generated"
+      );
       return { role: "assistant", ...response, sessionId };
     } catch (error) {
       const message = error instanceof Error ? error.message : "Chat service failed";
@@ -67,6 +88,40 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
       request.log.error({ error }, "Failed to generate chat response");
       return reply.status(statusCode).send({ error: message });
     }
+  });
+
+  const clearQuoteBodySchema = z.object({ sessionId: z.string().min(1) });
+  app.post("/api/chat/quote/clear", async (request, reply) => {
+    const parsed = clearQuoteBodySchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({
+        error: "Invalid body",
+        details: parsed.error.flatten(),
+      });
+    }
+
+    const sessionId = parsed.data.sessionId;
+    await compiledChatGraph.updateState(
+      { configurable: { thread_id: sessionId } },
+      {
+        quote: createInitialQuoteState(),
+        mode: "conversational",
+        route: "rag",
+        retrieval: [],
+        next: END,
+        quoteIntentClarifying: false,
+        resetSession: false,
+        deleteThreadRequested: false,
+      },
+      "intent_router"
+    );
+
+    return {
+      role: "assistant" as const,
+      content: "Quote cleared.",
+      meta: { mode: "conversational" as const, quote: null },
+      sessionId,
+    };
   });
 
   return app;
