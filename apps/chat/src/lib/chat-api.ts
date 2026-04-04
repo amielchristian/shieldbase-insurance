@@ -1,4 +1,4 @@
-export type ChatRole = "user" | "assistant" | "system";
+export type ChatRole = "user" | "assistant";
 
 export type ChatWireMessage = {
   role: ChatRole;
@@ -9,6 +9,18 @@ type ChatApiResponse = {
   role: "assistant";
   content: string;
 };
+
+export async function fetchWelcomeMessage(): Promise<string> {
+  const response = await fetch("/api/chat/welcome");
+  if (!response.ok) {
+    throw new Error("Unable to load welcome message.");
+  }
+  const data = (await response.json()) as { content?: unknown };
+  if (typeof data.content !== "string" || !data.content.trim()) {
+    throw new Error("Invalid welcome response.");
+  }
+  return data.content;
+}
 
 export async function postChat(messages: ChatWireMessage[]): Promise<ChatApiResponse> {
   const response = await fetch("/api/chat", {

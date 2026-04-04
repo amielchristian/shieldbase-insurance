@@ -1,8 +1,9 @@
 import { AIMessage, HumanMessage, SystemMessage } from "@langchain/core/messages";
 import { MessagesAnnotation, StateGraph, START, END } from "@langchain/langgraph";
 import { ChatOpenAI } from "@langchain/openai";
+import { CHAT_SYSTEM_PROMPT } from "../prompts/chat.js";
 
-export type WireChatRole = "user" | "assistant" | "system";
+export type WireChatRole = "user" | "assistant";
 
 export type WireChatMessage = {
   role: WireChatRole;
@@ -29,9 +30,6 @@ function toStringContent(content: unknown): string {
 
 function toLangChainMessages(messages: WireChatMessage[]) {
   return messages.map((message) => {
-    if (message.role === "system") {
-      return new SystemMessage(message.content);
-    }
     if (message.role === "assistant") {
       return new AIMessage(message.content);
     }
@@ -71,7 +69,10 @@ const graph = new StateGraph(MessagesAnnotation)
 
 export async function invokeChatGraph(messages: WireChatMessage[]): Promise<string> {
   const state = await graph.invoke({
-    messages: toLangChainMessages(messages),
+    messages: [
+      new SystemMessage(CHAT_SYSTEM_PROMPT),
+      ...toLangChainMessages(messages),
+    ],
   });
 
   for (let i = state.messages.length - 1; i >= 0; i -= 1) {

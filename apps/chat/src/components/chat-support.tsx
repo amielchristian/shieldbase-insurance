@@ -22,7 +22,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
-import { postChat } from '@/lib/chat-api'
+import { fetchWelcomeMessage, postChat } from '@/lib/chat-api'
 import { cn } from '@/lib/utils'
 
 type Role = 'user' | 'assistant'
@@ -48,25 +48,45 @@ function nextId() {
 
 export function ChatSupport() {
   const titleId = useId()
-  const [messages, setMessages] = useState<ChatMessage[]>(() => [
-    {
-      id: nextId(),
-      role: 'assistant',
-      content:
-        "Welcome to **ShieldBase** AI support. I'm here to help you with your healthcare needs.",
-    },
-  ])
+  const [messages, setMessages] = useState<ChatMessage[]>([])
+  const [welcomeLoading, setWelcomeLoading] = useState(true)
   const [draft, setDraft] = useState('')
   const [busy, setBusy] = useState(false)
   const endRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
+    let cancelled = false
+    fetchWelcomeMessage()
+      .then((content) => {
+        if (cancelled) return
+        setMessages([{ id: nextId(), role: 'assistant', content }])
+      })
+      .catch(() => {
+        if (cancelled) return
+        setMessages([
+          {
+            id: nextId(),
+            role: 'assistant',
+            content:
+              'We could not load the welcome message. Check that the server is running and try refreshing.',
+          },
+        ])
+      })
+      .finally(() => {
+        if (!cancelled) setWelcomeLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
-  }, [messages, busy])
+  }, [messages, busy, welcomeLoading])
 
   async function send(text: string) {
     const trimmed = text.trim()
-    if (!trimmed || busy) return
+    if (!trimmed || busy || welcomeLoading) return
 
     const userMessage: ChatMessage = {
       id: nextId(),
@@ -222,7 +242,7 @@ export function ChatSupport() {
                       size="sm"
                       className="h-auto rounded-full border-dashed border-border/90 bg-background/40 px-3 py-1.5 text-left text-xs font-normal whitespace-normal text-foreground shadow-none hover:border-primary/40 hover:bg-primary/5"
                       onClick={() => send(s)}
-                      disabled={busy}
+                      disabled={busy || welcomeLoading}
                     >
                       {s}
                     </Button>
@@ -237,6 +257,19 @@ export function ChatSupport() {
                   </li>
                 ))}
               </ul>
+
+              {welcomeLoading ? (
+                <div
+                  className="message-enter flex items-center gap-3 rounded-2xl border border-border/60 bg-muted/30 px-4 py-3 text-sm text-muted-foreground"
+                  aria-busy
+                >
+                  <Loader2
+                    className="size-4 shrink-0 animate-spin text-primary"
+                    aria-hidden
+                  />
+                  <span>Loading welcome…</span>
+                </div>
+              ) : null}
 
               {busy ? (
                 <div
@@ -278,7 +311,7 @@ export function ChatSupport() {
                       send(draft)
                     }
                   }}
-                  disabled={busy}
+                  disabled={busy || welcomeLoading}
                   className="min-h-[4.5rem] resize-none border-0 bg-transparent shadow-none focus-visible:ring-0 md:text-[0.9375rem]"
                 />
                 <div className="flex items-center justify-between gap-2 px-1 pb-1 pt-2">
@@ -295,7 +328,7 @@ export function ChatSupport() {
                   <Button
                     type="submit"
                     size="sm"
-                    disabled={busy || !draft.trim()}
+                    disabled={busy || welcomeLoading || !draft.trim()}
                     className="gap-1.5 rounded-lg font-semibold shadow-md shadow-primary/15"
                   >
                     Send

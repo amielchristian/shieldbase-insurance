@@ -2,7 +2,12 @@
 
 ## ShieldBase chat environment
 
-For the Fastify + LangGraph chat route (`/api/chat`), set these variables before running `apps/server`:
+Chat API (Fastify + LangGraph):
+
+- `GET /api/chat/welcome` — hardcoded first assistant message (copy in `apps/server/src/prompts/chat.ts`).
+- `POST /api/chat` — model reply; system prompt is injected on the server only (same prompts module).
+
+Set these before running `apps/server`:
 
 - `OPENROUTER_API_KEY` (required)
 - `OPENROUTER_MODEL` (optional, defaults to `openai/gpt-4o-mini`)
