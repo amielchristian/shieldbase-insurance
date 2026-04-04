@@ -53,3 +53,8 @@ export function createOpenRouterEmbeddings() {
   });
   return cachedEmbeddings;
 }
+
+/** Model id used for embeddings (cache keys, logging). Does not instantiate the client. */
+export function getOpenRouterEmbeddingsModelName(): string {
+  return process.env.OPENROUTER_EMBEDDINGS_MODEL?.trim() || "text-embedding-3-small";
+}

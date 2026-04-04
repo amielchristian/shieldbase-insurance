@@ -70,7 +70,7 @@ describe("http routes", () => {
 
     const invokeGraph = vi.fn(async (_input: { sessionId: string; messages: Array<{ role: string; content: string }> }) => ({
       content: "Mocked response",
-      meta: { mode: "conversational", quote: null },
+      meta: { mode: "conversational", quote: null, retrieval: null },
     }));
 
     const app = await buildServer({ logger: false, invokeGraph: invokeGraph as any });
@@ -85,7 +85,7 @@ describe("http routes", () => {
     const body = response.json();
     expect(body.role).toBe("assistant");
     expect(body.content).toBe("Mocked response");
-    expect(body.meta).toEqual({ mode: "conversational", quote: null });
+    expect(body.meta).toEqual({ mode: "conversational", quote: null, retrieval: null });
     expect(typeof body.sessionId).toBe("string");
     expect(body.sessionId.length).toBeGreaterThan(0);
     expect(invokeGraph).toHaveBeenCalledTimes(1);
@@ -109,7 +109,7 @@ describe("http routes", () => {
     const body = clear.json();
     expect(body.role).toBe("assistant");
     expect(body.content).toBe("Quote cleared.");
-    expect(body.meta).toEqual({ mode: "conversational", quote: null });
+    expect(body.meta).toEqual({ mode: "conversational", quote: null, retrieval: null });
     expect(body.sessionId).toBe("test-clear-thread");
     rmSync(dbPath, { force: true });
   });

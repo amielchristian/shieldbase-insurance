@@ -119,7 +119,7 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
     return {
       role: "assistant" as const,
       content: "Quote cleared.",
-      meta: { mode: "conversational" as const, quote: null },
+      meta: { mode: "conversational" as const, quote: null, retrieval: null },
       sessionId,
     };
   });

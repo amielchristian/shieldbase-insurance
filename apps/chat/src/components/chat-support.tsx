@@ -45,6 +45,12 @@ type ServerMeta = {
   mode?: 'conversational' | 'quotation'
   resetSession?: boolean
   quote?: QuoteMeta
+  retrieval?: null | Array<{
+    id: string
+    title: string
+    sourcePath: string
+    score: number
+  }>
 } | null
 
 /** Quick-start prompts aligned with README assessment examples and `knowledge-base/*.md`. */
@@ -362,6 +368,33 @@ export function ChatSupport() {
                         No missing fields detected.
                       </p>
                     )}
+                  </CardContent>
+                </Card>
+              ) : null}
+              {meta?.retrieval?.length ? (
+                <Card className="message-enter border-border/70 bg-card/40 py-3 shadow-sm backdrop-blur-sm">
+                  <CardHeader className="gap-1 px-5 py-0">
+                    <CardTitle className="font-serif text-sm text-muted-foreground">
+                      Sources (knowledge base)
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="px-5 pt-2 pb-1">
+                    <ul className="space-y-1.5 text-sm text-muted-foreground">
+                      {meta.retrieval.map((r) => {
+                        const file =
+                          r.sourcePath.split(/[/\\]/).pop() ?? r.sourcePath
+                        return (
+                          <li key={r.id} className="flex flex-col gap-0.5">
+                            <span className="font-medium text-foreground">
+                              {r.title}
+                            </span>
+                            <span className="font-mono text-xs opacity-80">
+                              {file}
+                            </span>
+                          </li>
+                        )
+                      })}
+                    </ul>
                   </CardContent>
                 </Card>
               ) : null}

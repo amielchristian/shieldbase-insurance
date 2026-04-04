@@ -42,6 +42,12 @@ import {
   type QuoteState,
   type QuoteStep,
 } from "../quote/quote.js";
+import {
+  applyMinCosineSimilarity,
+  mergeHybridRetrieval,
+  parseRagMinCosineSimilarity,
+  parseRagRrfK,
+} from "../rag/hybrid-retrieval.js";
 import { keywordSearch, loadKnowledgeBaseChunks, type KnowledgeChunk } from "../rag/knowledge-base.js";
 import { InMemoryVectorStore, type RetrievedChunk } from "../rag/vector-store.js";
 import type { BaseCheckpointSaver } from "@langchain/langgraph";
@@ -53,6 +59,13 @@ export type WireChatMessage = {
   content: string;
 };
 
+export type ChatRetrievalSource = {
+  id: string;
+  title: string;
+  sourcePath: string;
+  score: number;
+};
+
 export type ChatMeta = {
   mode: "conversational" | "quotation";
   resetSession?: boolean;
@@ -62,6 +75,7 @@ export type ChatMeta = {
     step: QuoteStep;
     missingFields: string[];
   };
+  retrieval: ChatRetrievalSource[] | null;
 };
 
 export type ChatResponse = {
@@ -90,7 +104,10 @@ type NextNode =
   | "quote_edit_dispatch"
   | "thread_delete";
 
-type RetrievalForState = Array<Pick<RetrievedChunk, "title" | "sourcePath" | "content" | "score">>;
+type RetrievalForState = Array<Pick<RetrievedChunk, "id" | "title" | "sourcePath" | "content" | "score">>;
+
+const RAG_RETRIEVAL_FETCH_K = 16;
+const RAG_RETRIEVAL_FINAL_K = 4;
 type QuoteIntentDecision = "continue_quote" | "side_question" | "topic_shift" | "cancel_quote";
 
 const quoteIntentDecisionSchema = z.object({
@@ -169,14 +186,37 @@ function lastHumanText(messages: BaseMessage[]): string {
   return "";
 }
 
+/** Last up to two human turns, for denser retrieval queries on follow-ups. */
+function buildRetrievalQuery(messages: BaseMessage[]): string {
+  const parts: string[] = [];
+  for (let i = messages.length - 1; i >= 0 && parts.length < 2; i -= 1) {
+    const m = messages[i];
+    if (m?.getType() === "human") {
+      const t = toStringContent(m.content).trim();
+      if (t) parts.unshift(t);
+    }
+  }
+  return parts.join("\n\n");
+}
+
 function takeRecentMessages(messages: BaseMessage[], limit: number): BaseMessage[] {
   if (messages.length <= limit) return messages;
   return messages.slice(Math.max(0, messages.length - limit));
 }
 
-function buildMeta(mode: Mode, quote: QuoteState): ChatMeta {
+function buildMeta(mode: Mode, quote: QuoteState, retrieval: RetrievalForState): ChatMeta {
+  const retrievalSummary: ChatRetrievalSource[] | null =
+    retrieval.length > 0
+      ? retrieval.map((r) => ({
+          id: r.id,
+          title: r.title,
+          sourcePath: r.sourcePath,
+          score: r.score,
+        }))
+      : null;
+
   if (mode !== "quotation" || !quote.active) {
-    return { mode: "conversational", quote: null };
+    return { mode: "conversational", quote: null, retrieval: retrievalSummary };
   }
   const product = quote.product ?? undefined;
   const missing = quote.product ? getMissingFields(quote.product, quote.data) : [];
@@ -188,11 +228,17 @@ function buildMeta(mode: Mode, quote: QuoteState): ChatMeta {
       step: quote.step,
       missingFields: missing,
     },
+    retrieval: retrievalSummary,
   };
 }
 
-function buildMetaWithFlags(mode: Mode, quote: QuoteState, flags: { resetSession: boolean }): ChatMeta {
-  const meta = buildMeta(mode, quote);
+function buildMetaWithFlags(
+  mode: Mode,
+  quote: QuoteState,
+  retrieval: RetrievalForState,
+  flags: { resetSession: boolean }
+): ChatMeta {
+  const meta = buildMeta(mode, quote, retrieval);
   if (flags.resetSession) meta.resetSession = true;
   return meta;
 }
@@ -245,49 +291,63 @@ function looksLikeCoverageQuestion(text: string): boolean {
 async function intentRouterNode(state: typeof ShieldBaseState.State) {
   const text = lastHumanText(state.messages);
   const quoteActive = state.quote.active;
+  const clearRetrieval = { retrieval: [] as RetrievalForState };
 
   if (isDeleteDataIntent(text)) {
-    return { route: "rag" as const, next: "thread_delete" as const };
+    return { ...clearRetrieval, route: "rag" as const, next: "thread_delete" as const };
   }
 
   if (isCancelIntent(text) && (quoteActive || isResumableDraft(state.quote))) {
-    return { route: "rag" as const, next: "quote_cancel_reset" as const };
+    return { ...clearRetrieval, route: "rag" as const, next: "quote_cancel_reset" as const };
   }
 
   if (quoteActive && isPauseIntent(text)) {
-    return { route: "rag" as const, next: "quote_pause_draft" as const };
+    return { ...clearRetrieval, route: "rag" as const, next: "quote_pause_draft" as const };
   }
 
   if (quoteActive && isStaleQuote(state.quote)) {
-    return { route: "rag" as const, next: "quote_stale_pause" as const };
+    return { ...clearRetrieval, route: "rag" as const, next: "quote_stale_pause" as const };
   }
 
   if (!quoteActive && isResumeIntent(text) && !isResumableDraft(state.quote)) {
-    return { route: "rag" as const, next: "quote_resume_missing" as const };
+    return { ...clearRetrieval, route: "rag" as const, next: "quote_resume_missing" as const };
   }
 
   if (quoteActive && state.quoteIntentClarifying) {
     const lower = text.toLowerCase();
     if (isCancelIntent(text)) {
-      return { quoteIntentClarifying: false, route: "rag" as const, next: "quote_cancel_reset" as const };
+      return {
+        ...clearRetrieval,
+        quoteIntentClarifying: false,
+        route: "rag" as const,
+        next: "quote_cancel_reset" as const,
+      };
     }
     if (/\b(side|question|ask)\b/.test(lower)) {
-      return { quoteIntentClarifying: false, route: "quote_side_question" as const, next: "rag_retrieve" as const };
+      return {
+        ...clearRetrieval,
+        quoteIntentClarifying: false,
+        route: "quote_side_question" as const,
+        next: "rag_retrieve" as const,
+      };
     }
-    return { quoteIntentClarifying: false, route: "quote" as const, next: "quote_entry" as const };
+    return { ...clearRetrieval, quoteIntentClarifying: false, route: "quote" as const, next: "quote_entry" as const };
   }
 
   if (isRestartIntent(text)) {
-    return { route: "restart" as const, next: "quote_entry" as const };
+    return { ...clearRetrieval, route: "restart" as const, next: "quote_entry" as const };
   }
 
   if (quoteActive) {
-    if (isEditIntent(text)) return { route: "quote" as const, next: "quote_edit_dispatch" as const };
-    return { route: "quote" as const, next: "quote_intent_classify" as const };
+    if (isEditIntent(text)) {
+      return { ...clearRetrieval, route: "quote" as const, next: "quote_edit_dispatch" as const };
+    }
+    return { ...clearRetrieval, route: "quote" as const, next: "quote_intent_classify" as const };
   }
 
   if (isResumableDraft(state.quote) && isResumeIntent(text)) {
     return {
+      ...clearRetrieval,
       route: "quote" as const,
       quote: { ...state.quote, active: true },
       mode: "quotation" as const,
@@ -295,22 +355,26 @@ async function intentRouterNode(state: typeof ShieldBaseState.State) {
     };
   }
 
-  if (detectQuoteIntent(text)) return { route: "quote" as const, next: "quote_entry" as const };
-  return { route: "rag" as const, next: "rag_retrieve" as const };
+  if (detectQuoteIntent(text)) {
+    return { ...clearRetrieval, route: "quote" as const, next: "quote_entry" as const };
+  }
+  return { ...clearRetrieval, route: "rag" as const, next: "rag_retrieve" as const };
 }
 
 async function quoteIntentClassifyNode(state: typeof ShieldBaseState.State) {
   const text = lastHumanText(state.messages);
+  const clearRetrieval = { retrieval: [] as RetrievalForState };
+
   if (!state.quote.active) {
-    return { route: "rag" as const, next: "rag_retrieve" as const };
+    return { ...clearRetrieval, route: "rag" as const, next: "rag_retrieve" as const };
   }
 
   if (isCancelIntent(text)) {
-    return { route: "rag" as const, next: "quote_cancel_reset" as const };
+    return { ...clearRetrieval, route: "rag" as const, next: "quote_cancel_reset" as const };
   }
 
   if (!looksLikeCoverageQuestion(text)) {
-    return { route: "quote" as const, next: "quote_entry" as const };
+    return { ...clearRetrieval, route: "quote" as const, next: "quote_entry" as const };
   }
 
   const model = createOpenRouterChatModel();
@@ -344,36 +408,53 @@ async function quoteIntentClassifyNode(state: typeof ShieldBaseState.State) {
   }
 
   if (intent === "cancel_quote") {
-    return { route: "rag" as const, next: "quote_cancel_reset" as const };
+    return { ...clearRetrieval, route: "rag" as const, next: "quote_cancel_reset" as const };
   }
   if (intent === "topic_shift") {
-    return { route: "quote_topic_shift" as const, next: "rag_retrieve" as const };
+    return { ...clearRetrieval, route: "quote_topic_shift" as const, next: "rag_retrieve" as const };
   }
   if (intent === "side_question") {
-    return { route: "quote_side_question" as const, next: "rag_retrieve" as const };
+    return { ...clearRetrieval, route: "quote_side_question" as const, next: "rag_retrieve" as const };
   }
-  return { route: "quote" as const, next: "quote_entry" as const };
+  return { ...clearRetrieval, route: "quote" as const, next: "quote_entry" as const };
 }
 
 async function ragRetrieveNode(state: typeof ShieldBaseState.State) {
-  const query = lastHumanText(state.messages);
+  const query = buildRetrievalQuery(state.messages);
   const chunks = await getKnowledgeBaseChunks();
   const store = await getVectorStoreOrNull();
+  const minCosine = parseRagMinCosineSimilarity();
+  const rrfK = parseRagRrfK();
 
   if (store) {
-    const results = await store.search(query, 4);
+    const vectorRaw = await store.search(query, RAG_RETRIEVAL_FETCH_K);
+    const vectorFiltered = applyMinCosineSimilarity(vectorRaw, minCosine);
+    const keywordRanked = keywordSearch(query, chunks, RAG_RETRIEVAL_FETCH_K);
+    const merged = mergeHybridRetrieval(vectorFiltered, keywordRanked, RAG_RETRIEVAL_FINAL_K, rrfK);
     return {
-      retrieval: results.map(({ title, sourcePath, content, score }) => ({ title, sourcePath, content, score })),
+      retrieval: merged.map(({ id, title, sourcePath, content, score }) => ({
+        id,
+        title,
+        sourcePath,
+        content,
+        score,
+      })),
       next: "rag_answer" as const,
     };
   }
 
-  const results = keywordSearch(query, chunks, 4).map((c, idx) => ({
+  const results = keywordSearch(query, chunks, RAG_RETRIEVAL_FINAL_K).map((c, idx) => ({
     ...c,
     score: 1 / (idx + 1),
   }));
   return {
-    retrieval: results.map(({ title, sourcePath, content, score }) => ({ title, sourcePath, content, score })),
+    retrieval: results.map(({ id, title, sourcePath, content, score }) => ({
+      id,
+      title,
+      sourcePath,
+      content,
+      score,
+    })),
     next: "rag_answer" as const,
   };
 }
@@ -948,7 +1029,9 @@ export async function invokeChatGraph(input: {
     if (message.getType() === "ai") {
       return {
         content: toStringContent(message.content),
-        meta: buildMetaWithFlags(state.mode, state.quote, { resetSession: state.resetSession }),
+        meta: buildMetaWithFlags(state.mode, state.quote, state.retrieval, {
+          resetSession: state.resetSession,
+        }),
       };
     }
   }

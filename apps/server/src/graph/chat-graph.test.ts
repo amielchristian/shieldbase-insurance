@@ -167,3 +167,30 @@ describe("invokeChatGraph (quote escape + resiliency)", () => {
   });
 });
 
+describe("invokeChatGraph (RAG meta)", () => {
+  it("returns retrieval sources for a KB question", async () => {
+    structuredOutputBehavior = "continue";
+    const dbPath = dbPathFor("rag-meta");
+    const { invokeChatGraph } = await loadGraph(dbPath);
+
+    const result = await invokeChatGraph({
+      sessionId: "test-rag-thread",
+      messages: [{ role: "user", content: "What insurance products do you offer?" }],
+    });
+
+    expect(result.content).toContain("Mocked grounded response.");
+    expect(result.meta.mode).toBe("conversational");
+    expect(result.meta.quote).toBeNull();
+    expect(result.meta.retrieval).not.toBeNull();
+    expect(result.meta.retrieval!.length).toBeGreaterThan(0);
+    expect(result.meta.retrieval![0]).toMatchObject({
+      id: expect.any(String),
+      title: expect.any(String),
+      sourcePath: expect.any(String),
+      score: expect.any(Number),
+    });
+
+    rmSync(dbPath, { force: true });
+  });
+});
+

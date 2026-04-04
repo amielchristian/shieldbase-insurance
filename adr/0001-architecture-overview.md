@@ -50,7 +50,7 @@ The runtime object is a **`StateGraph`** built on a custom **`Annotation.Root`**
 |---------|----------------|
 | `intent_router` | Detect intent for the current user message and set `state.route`. |
 | `quote_intent_classify` | During an active quote, classifies if the user should continue quote collection, ask a side question, or shift topics. |
-| `rag_retrieve` | Retrieve top-K KB chunks (vector store when available; keyword fallback otherwise). |
+| `rag_retrieve` | Retrieve top-K KB chunks: dense search over title+body embeddings (OpenRouter), cosine floor + reciprocal-rank fusion with keyword search, or keyword-only if the vector index cannot be built. Chunk embeddings may be loaded from a disk cache under `RAG_EMBEDDING_CACHE_DIR` (see README). |
 | `rag_answer` | Call the LLM with KB excerpts and emit one assistant message (also appends resume guidance when handling quote side questions/topic shifts). |
 | `quote_entry` | Enter the quote lane and dispatch to the correct quote step (based on `quote.step`, with restart handling). |
 | `quote_identify_product` | Determine product type or ask the user to pick auto/home/life. |
@@ -88,7 +88,7 @@ System prompts are not stored in `state.messages`. Nodes that call the LLM assem
 
 ### Extraction rule
 
-After `invoke`, the HTTP layer uses the **last message** in final state whose `getType() === "ai"` and normalizes `content` to a string (`toStringContent`). If none is found, throw.
+After `invoke`, the HTTP layer uses the **last message** in final state whose `getType() === "ai"` and normalizes `content` to a string (`toStringContent`). If none is found, throw. `meta.retrieval` lists KB source titles, paths, and scores for the current turn when RAG retrieval ran (no excerpt text in the wire payload).
 
 ---
 
