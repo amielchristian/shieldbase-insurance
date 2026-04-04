@@ -40,7 +40,7 @@ The runtime object is a **`StateGraph`** built on a custom **`Annotation.Root`**
 
 - `messages`: LangChain messages (Human/AI) with `messagesStateReducer` (append semantics).
 - `mode`: `"conversational" | "quotation"`.
-- `route`: router output for the current turn (`rag | quote | quote_rag_interrupt | restart`).
+- `route`: router output for the current turn (`rag | quote | quote_side_question | quote_topic_shift | restart`).
 - `retrieval`: last retrieved KB chunks (for grounding).
 - `quote`: structured quote state: `{ active, product, step, data, lastQuote }`.
 
@@ -49,8 +49,9 @@ The runtime object is a **`StateGraph`** built on a custom **`Annotation.Root`**
 | Node id | Responsibility |
 |---------|----------------|
 | `intent_router` | Detect intent for the current user message and set `state.route`. |
+| `quote_intent_classify` | During an active quote, classifies if the user should continue quote collection, ask a side question, or shift topics. |
 | `rag_retrieve` | Retrieve top-K KB chunks (vector store when available; keyword fallback otherwise). |
-| `rag_answer` | Call the LLM with KB excerpts and emit one assistant message (also appends the “back to quote” prompt during interrupts). |
+| `rag_answer` | Call the LLM with KB excerpts and emit one assistant message (also appends resume guidance when handling quote side questions/topic shifts). |
 | `quote_entry` | Enter the quote lane and dispatch to the correct quote step (based on `quote.step`, with restart handling). |
 | `quote_identify_product` | Determine product type or ask the user to pick auto/home/life. |
 | `quote_collect_details` | Extract/collect fields, ask the next missing field, or advance to validation. |
@@ -64,7 +65,7 @@ High-level flow:
 
 - `START -> intent_router`
 - Conditional:
-  - `rag` and `quote_rag_interrupt`: `rag_retrieve -> rag_answer -> END`
+  - `rag`, `quote_side_question`, and `quote_topic_shift`: `rag_retrieve -> rag_answer -> END`
   - `quote` and `restart`: `quote_entry -> (quote step nodes) -> END`
 
 **Lifecycle**
