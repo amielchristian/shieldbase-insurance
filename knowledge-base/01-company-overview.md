@@ -23,4 +23,4 @@ We aim to make insurance easier to understand: what you pay, what is covered, an
 
 ## Important note
 
-All names, numbers, and processes in this knowledge base are reference examples and do not replace personalized advice or your actual policy terms.
+All names, numbers, and processes in this knowledge base illustrate general practices and do not replace personalized advice or your actual policy terms.

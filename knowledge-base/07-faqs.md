@@ -35,8 +35,8 @@ We use information you provide and third-party reports for quoting, underwriting
 
 ## Contact
 
-- Claims: **1-800-SHIELDBASE** (example only)
-- Policy service: **help@shieldbase-insurance.example** (example only)
+- Claims: **1-800-SHIELDBASE**
+- Policy service: **help@shieldbase-insurance.com**
 
 ---
 

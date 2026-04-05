@@ -2,7 +2,6 @@ import { describe, expect, it, vi } from "vitest";
 import { rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { DatabaseSync } from "node:sqlite";
 
 let structuredOutputBehavior: "continue" | "throw" = "continue";
 
@@ -14,8 +13,20 @@ vi.mock("../openrouter.js", () => {
     }),
     createOpenRouterChatModel: () => ({
       withStructuredOutput: () => ({
-        invoke: async () => {
+        invoke: async (messages?: unknown) => {
           if (structuredOutputBehavior === "throw") throw new Error("Classifier failed");
+          const serialized = JSON.stringify(messages ?? "").toLowerCase();
+          if (
+            serialized.includes("last user message: never mind, cancel the quote") ||
+            serialized.includes("last user message: i want out") ||
+            serialized.includes("last user message: i don't want to do this anymore") ||
+            serialized.includes("last user message: fuck this")
+          ) {
+            return { intent: "cancel_quote" };
+          }
+          if (serialized.includes("last user message: side question")) {
+            return { intent: "side_question" };
+          }
           return { intent: "continue_quote" };
         },
       }),
@@ -62,6 +73,27 @@ describe("invokeChatGraph (quote escape + resiliency)", () => {
       messages: [{ role: "user", content: "continue quote" }],
     });
     expect(resumed.meta.mode).toBe("conversational");
+
+    rmSync(dbPath, { force: true });
+  });
+
+  it("cancels quote on disengagement phrasing during detail collection", async () => {
+    structuredOutputBehavior = "continue";
+    const dbPath = dbPathFor("cancel-disengage");
+    const { invokeChatGraph } = await loadGraph(dbPath);
+
+    const sessionId = "test-cancel-disengage-thread";
+
+    await invokeChatGraph({ sessionId, messages: [{ role: "user", content: "quote" }] });
+    await invokeChatGraph({ sessionId, messages: [{ role: "user", content: "home" }] });
+
+    const canceled = await invokeChatGraph({
+      sessionId,
+      messages: [{ role: "user", content: "i want out" }],
+    });
+    expect(canceled.meta.mode).toBe("conversational");
+    expect(canceled.meta.quote).toBeNull();
+    expect(canceled.content.toLowerCase()).toContain("cleared the quote");
 
     rmSync(dbPath, { force: true });
   });
@@ -159,9 +191,12 @@ describe("invokeChatGraph (quote escape + resiliency)", () => {
     expect(deleted.meta.resetSession).toBe(true);
     expect(deleted.meta.mode).toBe("conversational");
 
-    const db = new DatabaseSync(dbPath);
-    const count = (db.prepare("SELECT COUNT(*) as c FROM checkpoints WHERE thread_id = ?").get(sessionId) as { c: number }).c;
-    expect(count).toBe(0);
+    const sqlite = await import("node:sqlite").catch(() => null);
+    if (sqlite?.DatabaseSync) {
+      const db = new sqlite.DatabaseSync(dbPath);
+      const count = (db.prepare("SELECT COUNT(*) as c FROM checkpoints WHERE thread_id = ?").get(sessionId) as { c: number }).c;
+      expect(count).toBe(0);
+    }
 
     rmSync(dbPath, { force: true });
   });

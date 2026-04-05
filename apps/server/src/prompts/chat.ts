@@ -33,6 +33,7 @@ Return exactly one label:
 Rules:
 - Prefer continue_quote when uncertain between continue_quote and side_question.
 - Prefer topic_shift when the user clearly indicates moving away from quoting.
+- Treat user disengagement/frustration as leaving quote flow (topic_shift or cancel_quote), not continue_quote.
 - Output must match the schema; do not add extra keys.
 
 Examples:
@@ -40,6 +41,9 @@ Examples:
 - "Can we make it comprehensive?" => continue_quote
 - "What does comprehensive coverage include?" => side_question
 - "Can we do something else?" => topic_shift
+- "I want out." => cancel_quote
+- "I don't want to do this anymore." => cancel_quote
+- "Fuck this." => cancel_quote
 - "I want to talk about ShieldBase Insurance again." => topic_shift
 - "Never mind, cancel the quote." => cancel_quote`;
 

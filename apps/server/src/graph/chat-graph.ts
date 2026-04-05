@@ -279,15 +279,6 @@ function isStaleQuote(quote: QuoteState): boolean {
   return Date.now() - updated > ttlMinutes * 60_000;
 }
 
-function looksLikeCoverageQuestion(text: string): boolean {
-  const t = text.trim();
-  if (!t) return false;
-  if (/\?\s*$/.test(t)) return true;
-  const lower = t.toLowerCase();
-  if (/^(what|why|how|when|where|can|do|does|is|are)\b/.test(lower)) return true;
-  return /\b(cover|coverage|include|excluded?|deductible|liability|comprehensive|collision|premium)\b/.test(lower);
-}
-
 async function intentRouterNode(state: typeof ShieldBaseState.State) {
   const text = lastHumanText(state.messages);
   const quoteActive = state.quote.active;
@@ -297,7 +288,7 @@ async function intentRouterNode(state: typeof ShieldBaseState.State) {
     return { ...clearRetrieval, route: "rag" as const, next: "thread_delete" as const };
   }
 
-  if (isCancelIntent(text) && (quoteActive || isResumableDraft(state.quote))) {
+  if (isCancelIntent(text) && isResumableDraft(state.quote)) {
     return { ...clearRetrieval, route: "rag" as const, next: "quote_cancel_reset" as const };
   }
 
@@ -314,24 +305,12 @@ async function intentRouterNode(state: typeof ShieldBaseState.State) {
   }
 
   if (quoteActive && state.quoteIntentClarifying) {
-    const lower = text.toLowerCase();
-    if (isCancelIntent(text)) {
-      return {
-        ...clearRetrieval,
-        quoteIntentClarifying: false,
-        route: "rag" as const,
-        next: "quote_cancel_reset" as const,
-      };
-    }
-    if (/\b(side|question|ask)\b/.test(lower)) {
-      return {
-        ...clearRetrieval,
-        quoteIntentClarifying: false,
-        route: "quote_side_question" as const,
-        next: "rag_retrieve" as const,
-      };
-    }
-    return { ...clearRetrieval, quoteIntentClarifying: false, route: "quote" as const, next: "quote_entry" as const };
+    return {
+      ...clearRetrieval,
+      quoteIntentClarifying: false,
+      route: "quote" as const,
+      next: "quote_intent_classify" as const,
+    };
   }
 
   if (isRestartIntent(text)) {
@@ -339,9 +318,6 @@ async function intentRouterNode(state: typeof ShieldBaseState.State) {
   }
 
   if (quoteActive) {
-    if (isEditIntent(text)) {
-      return { ...clearRetrieval, route: "quote" as const, next: "quote_edit_dispatch" as const };
-    }
     return { ...clearRetrieval, route: "quote" as const, next: "quote_intent_classify" as const };
   }
 
@@ -367,14 +343,6 @@ async function quoteIntentClassifyNode(state: typeof ShieldBaseState.State) {
 
   if (!state.quote.active) {
     return { ...clearRetrieval, route: "rag" as const, next: "rag_retrieve" as const };
-  }
-
-  if (isCancelIntent(text)) {
-    return { ...clearRetrieval, route: "rag" as const, next: "quote_cancel_reset" as const };
-  }
-
-  if (!looksLikeCoverageQuestion(text)) {
-    return { ...clearRetrieval, route: "quote" as const, next: "quote_entry" as const };
   }
 
   const model = createOpenRouterChatModel();
@@ -415,6 +383,9 @@ async function quoteIntentClassifyNode(state: typeof ShieldBaseState.State) {
   }
   if (intent === "side_question") {
     return { ...clearRetrieval, route: "quote_side_question" as const, next: "rag_retrieve" as const };
+  }
+  if (isEditIntent(text) && state.quote.product) {
+    return { ...clearRetrieval, route: "quote" as const, next: "quote_edit_dispatch" as const };
   }
   return { ...clearRetrieval, route: "quote" as const, next: "quote_entry" as const };
 }
