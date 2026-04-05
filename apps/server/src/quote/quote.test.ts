@@ -7,9 +7,7 @@ import {
   extractQuoteEditsFromText,
   getMissingFields,
   homeSchema,
-  isAcceptIntent,
   isAdjustIntent,
-  isRestartIntent,
   isResumeIntent,
   lifeSchema,
   mergeQuoteData,
@@ -148,8 +146,6 @@ describe("quote utility behavior", () => {
     expect(detectProduct("Tell me about condo coverage")).toBe("home");
     expect(detectProduct("Need a 20 year term policy")).toBe("life");
 
-    expect(isRestartIntent("let us start over")).toBe(true);
-    expect(isAcceptIntent("yes, accept this quote")).toBe(true);
     expect(isAdjustIntent("driver age is 42 instead")).toBe(true);
     expect(isResumeIntent("continue quote")).toBe(true);
   });

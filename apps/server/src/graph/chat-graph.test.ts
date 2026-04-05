@@ -16,6 +16,11 @@ vi.mock("../openrouter.js", () => {
         invoke: async (messages?: unknown) => {
           if (structuredOutputBehavior === "throw") throw new Error("Classifier failed");
           const serialized = JSON.stringify(messages ?? "").toLowerCase();
+          const atReview = serialized.includes("current quote step: review");
+          const atConfirm = serialized.includes("current quote step: confirm");
+          const isDoIt = serialized.includes("last user message: do it");
+          const isGenerate = serialized.includes("last user message: generate");
+
           if (
             serialized.includes("last user message: never mind, cancel the quote") ||
             serialized.includes("last user message: i want out") ||
@@ -24,8 +29,40 @@ vi.mock("../openrouter.js", () => {
           ) {
             return { intent: "cancel_quote" };
           }
+          if (serialized.includes("last user message: finish later")) {
+            return { intent: "pause_quote" };
+          }
           if (serialized.includes("last user message: side question")) {
             return { intent: "side_question" };
+          }
+          if (serialized.includes("last user message: topic shift")) {
+            return { intent: "topic_shift" };
+          }
+          if (serialized.includes("last user message: continue quote")) {
+            return { intent: "resume_quote" };
+          }
+          if (atReview && (isDoIt || isGenerate || serialized.includes("last user message: proceed"))) {
+            return { intent: "confirm_generate" };
+          }
+          if (
+            atConfirm &&
+            (isDoIt ||
+              isGenerate ||
+              serialized.includes("last user message: yes") ||
+              serialized.includes("last user message: accept"))
+          ) {
+            return { intent: "accept_quote" };
+          }
+          if (serialized.includes("last user message: change")) {
+            return { intent: "adjust_quote" };
+          }
+          if (
+            serialized.includes("last user message: quote") ||
+            serialized.includes("qoute") ||
+            serialized.includes("last user message: how much would home insurance cost for me?") ||
+            serialized.includes("last user message: generate")
+          ) {
+            return { intent: "start_quote" };
           }
           return { intent: "continue_quote" };
         },
@@ -128,8 +165,120 @@ describe("invokeChatGraph (quote escape + resiliency)", () => {
     rmSync(dbPath, { force: true });
   });
 
+  it("starts quote flow for common quote typos like qoute", async () => {
+    structuredOutputBehavior = "continue";
+    const dbPath = dbPathFor("quote-typo");
+    const { invokeChatGraph } = await loadGraph(dbPath);
+
+    const started = await invokeChatGraph({
+      sessionId: "test-quote-typo-thread",
+      messages: [{ role: "user", content: "i'd like a qoute" }],
+    });
+
+    expect(started.meta.mode).toBe("quotation");
+    expect(started.content.toLowerCase()).toContain("which type of insurance");
+
+    rmSync(dbPath, { force: true });
+  });
+
+  it("starts quote flow for estimate intent without the word quote", async () => {
+    structuredOutputBehavior = "continue";
+    const dbPath = dbPathFor("estimate-intent");
+    const { invokeChatGraph } = await loadGraph(dbPath);
+
+    const started = await invokeChatGraph({
+      sessionId: "test-estimate-intent-thread",
+      messages: [{ role: "user", content: "how much would home insurance cost for me?" }],
+    });
+
+    expect(started.meta.mode).toBe("quotation");
+    expect(started.meta.quote?.product).toBe("home");
+    expect(started.content.toLowerCase()).toContain("list of required fields");
+    expect(started.content.toLowerCase()).toContain("property type");
+
+    rmSync(dbPath, { force: true });
+  });
+
+  it("starts quote flow for terse start intents like generate", async () => {
+    structuredOutputBehavior = "continue";
+    const dbPath = dbPathFor("generate-intent");
+    const { invokeChatGraph } = await loadGraph(dbPath);
+
+    const started = await invokeChatGraph({
+      sessionId: "test-generate-intent-thread",
+      messages: [{ role: "user", content: "generate" }],
+    });
+
+    expect(started.meta.mode).toBe("quotation");
+    expect(started.content.toLowerCase()).toContain("which type of insurance");
+
+    rmSync(dbPath, { force: true });
+  });
+
+  it("progresses from review and confirm using short do-it phrasing", async () => {
+    structuredOutputBehavior = "continue";
+    const dbPath = dbPathFor("do-it-review-confirm");
+    const { invokeChatGraph } = await loadGraph(dbPath);
+
+    const sessionId = "test-do-it-review-confirm-thread";
+    await invokeChatGraph({ sessionId, messages: [{ role: "user", content: "quote" }] });
+    await invokeChatGraph({ sessionId, messages: [{ role: "user", content: "auto" }] });
+
+    const review = await invokeChatGraph({
+      sessionId,
+      messages: [{ role: "user", content: "2020 Toyota Camry, age 35, clean, comprehensive" }],
+    });
+    expect(review.meta.mode).toBe("quotation");
+    expect(review.meta.quote?.step).toBe("review");
+    expect(review.content.toLowerCase()).toContain("generate the quote now");
+
+    const generated = await invokeChatGraph({
+      sessionId,
+      messages: [{ role: "user", content: "do it" }],
+    });
+    expect(generated.meta.mode).toBe("quotation");
+    expect(generated.meta.quote?.step).toBe("confirm");
+    expect(generated.content.toLowerCase()).not.toContain("generate the quote now");
+
+    const accepted = await invokeChatGraph({
+      sessionId,
+      messages: [{ role: "user", content: "do it" }],
+    });
+    expect(accepted.meta.mode).toBe("conversational");
+    expect(accepted.meta.quote).toBeNull();
+    expect(accepted.content.toLowerCase()).toContain("recorded your selection");
+
+    rmSync(dbPath, { force: true });
+  });
+
+  it("keeps topic-shift saved drafts resumable", async () => {
+    structuredOutputBehavior = "continue";
+    const dbPath = dbPathFor("topic-shift-resume");
+    const { invokeChatGraph } = await loadGraph(dbPath);
+
+    const sessionId = "test-topic-shift-resume-thread";
+
+    await invokeChatGraph({ sessionId, messages: [{ role: "user", content: "quote" }] });
+    await invokeChatGraph({ sessionId, messages: [{ role: "user", content: "auto" }] });
+
+    const shifted = await invokeChatGraph({
+      sessionId,
+      messages: [{ role: "user", content: "topic shift" }],
+    });
+    expect(shifted.meta.mode).toBe("conversational");
+    expect(shifted.content.toLowerCase()).toContain("saved");
+
+    const resumed = await invokeChatGraph({
+      sessionId,
+      messages: [{ role: "user", content: "continue quote" }],
+    });
+    expect(resumed.meta.mode).toBe("quotation");
+
+    rmSync(dbPath, { force: true });
+  });
+
   it("asks for clarification when quote intent classification fails", async () => {
-    structuredOutputBehavior = "throw";
+    structuredOutputBehavior = "continue";
     const dbPath = dbPathFor("classifier-throw");
     const { invokeChatGraph } = await loadGraph(dbPath);
 
@@ -138,6 +287,7 @@ describe("invokeChatGraph (quote escape + resiliency)", () => {
     await invokeChatGraph({ sessionId, messages: [{ role: "user", content: "quote" }] });
     await invokeChatGraph({ sessionId, messages: [{ role: "user", content: "auto" }] });
 
+    structuredOutputBehavior = "throw";
     const clarify = await invokeChatGraph({
       sessionId,
       messages: [{ role: "user", content: "What does comprehensive coverage include?" }],
@@ -152,6 +302,7 @@ describe("invokeChatGraph (quote escape + resiliency)", () => {
       messages: [{ role: "user", content: "side question" }],
     });
     expect(side.content).toContain("Mocked grounded response.");
+    expect(side.content.toLowerCase()).not.toContain("continue quote");
 
     rmSync(dbPath, { force: true });
   });
@@ -171,7 +322,7 @@ describe("invokeChatGraph (quote escape + resiliency)", () => {
       messages: [{ role: "user", content: "change driver age" }],
     });
     expect(edit.meta.mode).toBe("quotation");
-    expect(edit.content.toLowerCase()).toContain("old");
+    expect(edit.content.toLowerCase()).toContain("driver age");
 
     rmSync(dbPath, { force: true });
   });

@@ -376,17 +376,128 @@ export function getMissingFields(product: QuoteProduct, data: QuoteDataByProduct
   return missing;
 }
 
+export function listRequiredFields(product: QuoteProduct): string[] {
+  if (product === "auto") {
+    return ["vehicleYear", "make", "model", "driverAge", "drivingHistory", "coverageLevel"];
+  }
+  if (product === "home") {
+    return ["propertyType", "location", "estimatedValue", "coverageLevel"];
+  }
+  return ["age", "healthStatus", "coverageAmount", "termLengthYears"];
+}
+
+export function labelForField(product: QuoteProduct, field: string): string {
+  if (product === "auto") {
+    switch (field) {
+      case "vehicleYear":
+        return "Vehicle year";
+      case "make":
+        return "Car make";
+      case "model":
+        return "Car model";
+      case "driverAge":
+        return "Primary driver age";
+      case "drivingHistory":
+        return "Driving history";
+      case "coverageLevel":
+        return "Coverage level";
+      default:
+        return field;
+    }
+  }
+  if (product === "home") {
+    switch (field) {
+      case "propertyType":
+        return "Property type";
+      case "location":
+        return "Property location";
+      case "estimatedValue":
+        return "Estimated property value";
+      case "coverageLevel":
+        return "Coverage level";
+      default:
+        return field;
+    }
+  }
+  switch (field) {
+    case "age":
+      return "Insured age";
+    case "healthStatus":
+      return "Health status";
+    case "coverageAmount":
+      return "Coverage amount";
+    case "termLengthYears":
+      return "Term length";
+    default:
+      return field;
+  }
+}
+
+function descriptionForField(product: QuoteProduct, field: string): string {
+  if (product === "auto") {
+    switch (field) {
+      case "vehicleYear":
+        return "The vehicle's model year (e.g. 2020).";
+      case "make":
+        return "The manufacturer (e.g. Toyota).";
+      case "model":
+        return "The vehicle model (e.g. Camry).";
+      case "driverAge":
+        return "Age of the primary driver.";
+      case "drivingHistory":
+        return "Clean, minor violations, or accident history.";
+      case "coverageLevel":
+        return "Basic, standard, or comprehensive.";
+      default:
+        return "Required for your quote.";
+    }
+  }
+  if (product === "home") {
+    switch (field) {
+      case "propertyType":
+        return "Single family, condo, townhouse, or renters.";
+      case "location":
+        return "City and state of the property.";
+      case "estimatedValue":
+        return "Approximate property value in USD.";
+      case "coverageLevel":
+        return "Basic, standard, or comprehensive.";
+      default:
+        return "Required for your quote.";
+    }
+  }
+  switch (field) {
+    case "age":
+      return "Age of the insured person.";
+    case "healthStatus":
+      return "Excellent, good, fair, or poor.";
+    case "coverageAmount":
+      return "Desired coverage amount in USD.";
+    case "termLengthYears":
+      return "10, 20, or 30-year term.";
+    default:
+      return "Required for your quote.";
+  }
+}
+
+export function formatRequiredFields(product: QuoteProduct): string {
+  const lines = listRequiredFields(product).map(
+    (field, idx) => `${idx + 1}. ${labelForField(product, field)}. ${descriptionForField(product, field)}`
+  );
+  return ["Got it! Here's a list of required fields:", ...lines, "", "---", "Please reply with this information so that I can proceed with the quote."].join("\n");
+}
+
 export function questionForField(product: QuoteProduct, field: string): string {
   if (product === "auto") {
     switch (field) {
       case "vehicleYear":
-        return "What is the vehicle year? (e.g. 2020)";
+        return "Vehicle year?";
       case "make":
-        return "What is the vehicle make? (e.g. Toyota)";
+        return "Car make?";
       case "model":
-        return "What is the vehicle model? (e.g. Camry)";
+        return "Car model?";
       case "driverAge":
-        return "How old is the primary driver?";
+        return "Primary driver age?";
       case "drivingHistory":
         return "Driving history: clean, minor violations, or accident?";
       case "coverageLevel":
@@ -398,11 +509,11 @@ export function questionForField(product: QuoteProduct, field: string): string {
   if (product === "home") {
     switch (field) {
       case "propertyType":
-        return "What property type is this: single family, condo, townhouse, or renters?";
+        return "Property type: single family, condo, townhouse, or renters?";
       case "location":
-        return "What city/state is the property in? (e.g. Austin, TX)";
+        return "Property location (city/state)?";
       case "estimatedValue":
-        return "What is the estimated property value (roughly)? (e.g. 350000)";
+        return "Estimated property value?";
       case "coverageLevel":
         return "Coverage level: basic, standard, or comprehensive?";
       default:
@@ -411,11 +522,11 @@ export function questionForField(product: QuoteProduct, field: string): string {
   }
   switch (field) {
     case "age":
-      return "How old is the insured?";
+      return "Insured age?";
     case "healthStatus":
       return "Health status: excellent, good, fair, or poor?";
     case "coverageAmount":
-      return "What coverage amount do you want? (e.g. 250000)";
+      return "Coverage amount?";
     case "termLengthYears":
       return "Term length: 10, 20, or 30 years?";
     default:
@@ -528,7 +639,7 @@ export function formatQuote(product: QuoteProduct, quote: QuoteResult): string {
     "**Breakdown**",
     lines,
     "",
-    "Reply with **accept** to proceed, or tell me what to adjust (e.g. “make it comprehensive”, “driver age is 42”, “coverage amount is 500000”), or say **start over**.",
+    "I can proceed with this quote, adjust anything you want (e.g. “make it comprehensive”, “driver age is 42”, “coverage amount is 500000”), or restart from scratch.",
   ].join("\n");
 }
 
@@ -563,39 +674,14 @@ export function formatQuoteDraftSummary(product: QuoteProduct, data: QuoteDataBy
   ].join("\n");
 }
 
-export function isRestartIntent(text: string): boolean {
-  const t = text.toLowerCase();
-  return /\b(start over|restart|reset|new quote)\b/.test(t);
-}
-
-export function isCancelIntent(text: string): boolean {
-  const t = text.toLowerCase().trim();
-  return /\b(cancel|never mind|nevermind|stop|exit|quit|forget (the )?quote|don'?t want (a )?quote|no quote)\b/.test(t);
-}
-
-export function isPauseIntent(text: string): boolean {
-  const t = text.toLowerCase().trim();
-  return /\b(finish later|save for later|pause|we'?ll do this later|do this later|later)\b/.test(t);
-}
-
 export function isDeleteDataIntent(text: string): boolean {
   const t = text.toLowerCase().trim();
   return /\b(delete my data|forget me|erase (my )?(data|chat)|delete this chat|remove my information)\b/.test(t);
 }
 
-export function isConfirmIntent(text: string): boolean {
-  const t = text.toLowerCase().trim();
-  return /\b(confirm|looks (right|good)|that'?s right|proceed|continue)\b/.test(t);
-}
-
 export function isEditIntent(text: string): boolean {
   const t = text.toLowerCase().trim();
   return /\b(go back|back|previous|edit|change|update)\b/.test(t);
-}
-
-export function isAcceptIntent(text: string): boolean {
-  const t = text.toLowerCase();
-  return /\baccept\b|\blooks good\b|\bgo ahead\b|\byes\b/.test(t);
 }
 
 export function isAdjustIntent(text: string): boolean {

@@ -25,18 +25,15 @@ import {
   formatQuoteDraftSummary,
   formatQuote,
   getMissingFields,
-  isAcceptIntent,
   isAdjustIntent,
-  isCancelIntent,
-  isConfirmIntent,
   isDeleteDataIntent,
   isEditIntent,
-  isPauseIntent,
   isResumeIntent,
   isResumableDraft,
-  isRestartIntent,
   mergeQuoteData,
   computeQuote,
+  formatRequiredFields,
+  listRequiredFields,
   questionForField,
   type QuoteProduct,
   type QuoteState,
@@ -108,10 +105,35 @@ type RetrievalForState = Array<Pick<RetrievedChunk, "id" | "title" | "sourcePath
 
 const RAG_RETRIEVAL_FETCH_K = 16;
 const RAG_RETRIEVAL_FINAL_K = 4;
-type QuoteIntentDecision = "continue_quote" | "side_question" | "topic_shift" | "cancel_quote";
+type QuoteIntentDecision =
+  | "start_quote"
+  | "continue_quote"
+  | "confirm_generate"
+  | "accept_quote"
+  | "adjust_quote"
+  | "pause_quote"
+  | "cancel_quote"
+  | "restart_quote"
+  | "resume_quote"
+  | "side_question"
+  | "topic_shift"
+  | "unclear";
 
 const quoteIntentDecisionSchema = z.object({
-  intent: z.enum(["continue_quote", "side_question", "topic_shift", "cancel_quote"]),
+  intent: z.enum([
+    "start_quote",
+    "continue_quote",
+    "confirm_generate",
+    "accept_quote",
+    "adjust_quote",
+    "pause_quote",
+    "cancel_quote",
+    "restart_quote",
+    "resume_quote",
+    "side_question",
+    "topic_shift",
+    "unclear",
+  ]),
 });
 
 const ShieldBaseState = Annotation.Root({
@@ -138,6 +160,10 @@ const ShieldBaseState = Annotation.Root({
   quoteIntentClarifying: Annotation<boolean>({
     reducer: (_left, right) => right,
     default: () => false,
+  }),
+  quoteIntentDecision: Annotation<QuoteIntentDecision | null>({
+    reducer: (_left, right) => right,
+    default: () => null,
   }),
   resetSession: Annotation<boolean>({
     reducer: (_left, right) => right,
@@ -265,11 +291,6 @@ async function getVectorStoreOrNull(): Promise<InMemoryVectorStore | null> {
   }
 }
 
-function detectQuoteIntent(text: string): boolean {
-  const t = text.toLowerCase();
-  return /\bquote\b|\bquotation\b|\bpremium\b|\bprice\b|\bcost\b|\bhow much\b/.test(t);
-}
-
 function isStaleQuote(quote: QuoteState): boolean {
   if (!quote.active) return false;
   const ttlMinutes = process.env.QUOTE_DRAFT_TTL_MINUTES ? Number(process.env.QUOTE_DRAFT_TTL_MINUTES) : 60;
@@ -279,51 +300,75 @@ function isStaleQuote(quote: QuoteState): boolean {
   return Date.now() - updated > ttlMinutes * 60_000;
 }
 
+async function classifyQuoteIntent(
+  state: typeof ShieldBaseState.State,
+  text: string
+): Promise<QuoteIntentDecision | null> {
+  const model = createOpenRouterChatModel();
+  const classifier = model.withStructuredOutput(quoteIntentDecisionSchema);
+  const context = [
+    `Quote active: ${state.quote.active ? "yes" : "no"}`,
+    `Resumable draft available: ${isResumableDraft(state.quote) ? "yes" : "no"}`,
+    `Current quote product: ${state.quote.product ?? "unknown"}`,
+    `Current quote step: ${state.quote.step}`,
+    `Pending field: ${state.quote.pendingField ?? "none"}`,
+    `Last user message: ${text || "(empty)"}`,
+  ].join("\n");
+
+  try {
+    const result = await classifier.invoke([
+      new SystemMessage(QUOTE_INTENT_ROUTER_PROMPT),
+      new HumanMessage(context),
+    ]);
+    return result.intent;
+  } catch {
+    return null;
+  }
+}
+
 async function intentRouterNode(state: typeof ShieldBaseState.State) {
   const text = lastHumanText(state.messages);
   const quoteActive = state.quote.active;
   const clearRetrieval = { retrieval: [] as RetrievalForState };
 
   if (isDeleteDataIntent(text)) {
-    return { ...clearRetrieval, route: "rag" as const, next: "thread_delete" as const };
-  }
-
-  if (isCancelIntent(text) && isResumableDraft(state.quote)) {
-    return { ...clearRetrieval, route: "rag" as const, next: "quote_cancel_reset" as const };
-  }
-
-  if (quoteActive && isPauseIntent(text)) {
-    return { ...clearRetrieval, route: "rag" as const, next: "quote_pause_draft" as const };
+    return { ...clearRetrieval, quoteIntentDecision: null, route: "rag" as const, next: "thread_delete" as const };
   }
 
   if (quoteActive && isStaleQuote(state.quote)) {
-    return { ...clearRetrieval, route: "rag" as const, next: "quote_stale_pause" as const };
-  }
-
-  if (!quoteActive && isResumeIntent(text) && !isResumableDraft(state.quote)) {
-    return { ...clearRetrieval, route: "rag" as const, next: "quote_resume_missing" as const };
+    return { ...clearRetrieval, quoteIntentDecision: null, route: "rag" as const, next: "quote_stale_pause" as const };
   }
 
   if (quoteActive && state.quoteIntentClarifying) {
     return {
       ...clearRetrieval,
+      quoteIntentDecision: null,
       quoteIntentClarifying: false,
       route: "quote" as const,
       next: "quote_intent_classify" as const,
     };
   }
 
-  if (isRestartIntent(text)) {
-    return { ...clearRetrieval, route: "restart" as const, next: "quote_entry" as const };
-  }
-
   if (quoteActive) {
-    return { ...clearRetrieval, route: "quote" as const, next: "quote_intent_classify" as const };
+    return { ...clearRetrieval, quoteIntentDecision: null, route: "quote" as const, next: "quote_intent_classify" as const };
   }
 
-  if (isResumableDraft(state.quote) && isResumeIntent(text)) {
+  const intent = await classifyQuoteIntent(state, text);
+  if (!intent) {
+    return { ...clearRetrieval, quoteIntentDecision: null, route: "rag" as const, next: "rag_retrieve" as const };
+  }
+
+  if (intent === "cancel_quote" && isResumableDraft(state.quote)) {
+    return { ...clearRetrieval, quoteIntentDecision: intent, route: "rag" as const, next: "quote_cancel_reset" as const };
+  }
+
+  if (intent === "resume_quote") {
+    if (!isResumableDraft(state.quote)) {
+      return { ...clearRetrieval, quoteIntentDecision: intent, route: "rag" as const, next: "quote_resume_missing" as const };
+    }
     return {
       ...clearRetrieval,
+      quoteIntentDecision: intent,
       route: "quote" as const,
       quote: { ...state.quote, active: true },
       mode: "quotation" as const,
@@ -331,10 +376,39 @@ async function intentRouterNode(state: typeof ShieldBaseState.State) {
     };
   }
 
-  if (detectQuoteIntent(text)) {
-    return { ...clearRetrieval, route: "quote" as const, next: "quote_entry" as const };
+  if (intent === "start_quote" || intent === "restart_quote") {
+    return {
+      ...clearRetrieval,
+      quoteIntentDecision: intent,
+      route: intent === "restart_quote" ? ("restart" as const) : ("quote" as const),
+      next: "quote_entry" as const,
+    };
   }
-  return { ...clearRetrieval, route: "rag" as const, next: "rag_retrieve" as const };
+
+  if (
+    (intent === "continue_quote" ||
+      intent === "adjust_quote" ||
+      intent === "confirm_generate" ||
+      intent === "accept_quote") &&
+    isResumableDraft(state.quote)
+  ) {
+    return {
+      ...clearRetrieval,
+      quoteIntentDecision: intent,
+      route: "quote" as const,
+      quote: { ...state.quote, active: true },
+      mode: "quotation" as const,
+      next: "quote_entry" as const,
+    };
+  }
+
+  if (intent === "side_question") {
+    return { ...clearRetrieval, quoteIntentDecision: intent, route: "quote_side_question" as const, next: "rag_retrieve" as const };
+  }
+  if (intent === "topic_shift") {
+    return { ...clearRetrieval, quoteIntentDecision: intent, route: "quote_topic_shift" as const, next: "rag_retrieve" as const };
+  }
+  return { ...clearRetrieval, quoteIntentDecision: intent, route: "rag" as const, next: "rag_retrieve" as const };
 }
 
 async function quoteIntentClassifyNode(state: typeof ShieldBaseState.State) {
@@ -342,33 +416,16 @@ async function quoteIntentClassifyNode(state: typeof ShieldBaseState.State) {
   const clearRetrieval = { retrieval: [] as RetrievalForState };
 
   if (!state.quote.active) {
-    return { ...clearRetrieval, route: "rag" as const, next: "rag_retrieve" as const };
+    return { ...clearRetrieval, quoteIntentDecision: null, route: "rag" as const, next: "rag_retrieve" as const };
   }
 
-  const model = createOpenRouterChatModel();
-  const classifier = model.withStructuredOutput(quoteIntentDecisionSchema);
-  const quote = state.quote;
-  const context = [
-    `Current quote product: ${quote.product ?? "unknown"}`,
-    `Current quote step: ${quote.step}`,
-    `Pending field: ${quote.pendingField ?? "none"}`,
-    `Last user message: ${text || "(empty)"}`,
-  ].join("\n");
-
-  let intent: QuoteIntentDecision = "continue_quote";
-  try {
-    const result = await classifier.invoke([
-      new SystemMessage(QUOTE_INTENT_ROUTER_PROMPT),
-      new HumanMessage(context),
-    ]);
-    intent = result.intent;
-  } catch {
-    const prompt =
-      "Do you want to **continue your quote**, ask a **side question**, or **cancel the quote**?\n\n" +
-      "Reply with: **continue**, **side question**, or **cancel**.";
+  const intent = await classifyQuoteIntent(state, text);
+  if (!intent) {
+    const prompt = "Do you want to continue the quote, adjust details, pause, restart, ask a side question, or cancel it?";
     return {
       messages: [new AIMessage(prompt)],
       quoteIntentClarifying: true,
+      quoteIntentDecision: null,
       mode: "quotation" satisfies Mode,
       quote: state.quote,
       next: END,
@@ -376,18 +433,45 @@ async function quoteIntentClassifyNode(state: typeof ShieldBaseState.State) {
   }
 
   if (intent === "cancel_quote") {
-    return { ...clearRetrieval, route: "rag" as const, next: "quote_cancel_reset" as const };
+    return { ...clearRetrieval, quoteIntentDecision: intent, route: "rag" as const, next: "quote_cancel_reset" as const };
+  }
+  if (intent === "pause_quote") {
+    return { ...clearRetrieval, quoteIntentDecision: intent, route: "rag" as const, next: "quote_pause_draft" as const };
+  }
+  if (intent === "restart_quote") {
+    return { ...clearRetrieval, quoteIntentDecision: intent, route: "restart" as const, next: "quote_entry" as const };
   }
   if (intent === "topic_shift") {
-    return { ...clearRetrieval, route: "quote_topic_shift" as const, next: "rag_retrieve" as const };
+    return { ...clearRetrieval, quoteIntentDecision: intent, route: "quote_topic_shift" as const, next: "rag_retrieve" as const };
   }
   if (intent === "side_question") {
-    return { ...clearRetrieval, route: "quote_side_question" as const, next: "rag_retrieve" as const };
+    return { ...clearRetrieval, quoteIntentDecision: intent, route: "quote_side_question" as const, next: "rag_retrieve" as const };
   }
-  if (isEditIntent(text) && state.quote.product) {
-    return { ...clearRetrieval, route: "quote" as const, next: "quote_edit_dispatch" as const };
+
+  if (state.quote.step === "review") {
+    if (intent === "confirm_generate") {
+      return { ...clearRetrieval, quoteIntentDecision: intent, route: "quote" as const, next: "quote_validate" as const };
+    }
+    if (intent === "adjust_quote" || isEditIntent(text)) {
+      return { ...clearRetrieval, quoteIntentDecision: intent, route: "quote" as const, next: "quote_collect_details" as const };
+    }
+    return { ...clearRetrieval, quoteIntentDecision: intent, route: "quote" as const, next: "quote_review" as const };
   }
-  return { ...clearRetrieval, route: "quote" as const, next: "quote_entry" as const };
+
+  if (state.quote.step === "confirm") {
+    if (intent === "accept_quote") {
+      return { ...clearRetrieval, quoteIntentDecision: intent, route: "quote" as const, next: "quote_confirm" as const };
+    }
+    if (intent === "adjust_quote") {
+      return { ...clearRetrieval, quoteIntentDecision: intent, route: "quote" as const, next: "quote_collect_details" as const };
+    }
+    return { ...clearRetrieval, quoteIntentDecision: intent, route: "quote" as const, next: "quote_confirm" as const };
+  }
+
+  if ((intent === "adjust_quote" || isEditIntent(text)) && state.quote.product) {
+    return { ...clearRetrieval, quoteIntentDecision: intent, route: "quote" as const, next: "quote_edit_dispatch" as const };
+  }
+  return { ...clearRetrieval, quoteIntentDecision: intent, route: "quote" as const, next: "quote_entry" as const };
 }
 
 async function ragRetrieveNode(state: typeof ShieldBaseState.State) {
@@ -459,18 +543,21 @@ async function ragAnswerNode(state: typeof ShieldBaseState.State) {
 
   if (state.route === "quote_topic_shift" && state.quote.active) {
     const product = state.quote.product ? `**${state.quote.product}**` : "your";
-    content = `${content}\n\n---\n\nI saved ${product} quote draft. Say **continue quote** whenever you want to resume.`;
+    content = `${content}\n\n---\n\nI saved ${product} quote draft, so we can pick up right where we left off whenever you’re ready.`;
     return {
       messages: [new AIMessage(content)],
       mode: "conversational" satisfies Mode,
-      quote: { ...state.quote, active: false },
+      quote: {
+        ...state.quote,
+        active: false,
+        status: "inactive",
+        lastUpdatedAt: nowIso(),
+      },
       next: END,
     };
   }
 
   if (state.route === "quote_side_question" && state.quote.active) {
-    const product = state.quote.product ? `your **${state.quote.product}** quote` : "your quote";
-    content = `${content}\n\n---\n\nIf you want to continue ${product}, say **continue quote**.`;
     return {
       messages: [new AIMessage(content)],
       mode: "quotation" satisfies Mode,
@@ -492,7 +579,7 @@ function nowIso(): string {
 
 async function quoteResumeMissingNode(_state: typeof ShieldBaseState.State) {
   const prompt =
-    "There isn’t a saved quote draft to resume. Say **quote** to start a new one, or ask a coverage question anytime.";
+    "There isn’t a saved quote draft to resume. We can start a new quote whenever you’re ready, or I can help with a coverage question anytime.";
   return { messages: [new AIMessage(prompt)], mode: "conversational" satisfies Mode, next: END };
 }
 
@@ -509,7 +596,7 @@ async function quotePauseDraftNode(state: typeof ShieldBaseState.State) {
     status: "inactive",
     lastUpdatedAt: nowIso(),
   };
-  const prompt = "No problem — I paused your quote draft. Say **continue quote** anytime to resume, or **cancel quote** to clear it.";
+  const prompt = "No problem — I paused your quote draft. I can resume it whenever you’re ready, or clear it if you’d prefer to stop.";
   return { messages: [new AIMessage(prompt)], quote, mode: "conversational" satisfies Mode, next: END };
 }
 
@@ -521,7 +608,7 @@ async function quoteStalePauseNode(state: typeof ShieldBaseState.State) {
     lastUpdatedAt: nowIso(),
   };
   const prompt =
-    "Your quote draft is paused because it’s been a while. Say **continue quote** to resume or **cancel quote** to clear it.";
+    "Your quote draft is paused because it’s been a while. I can resume it from where we left off, or clear it if you’d rather start fresh.";
   return { messages: [new AIMessage(prompt)], quote, mode: "conversational" satisfies Mode, next: END };
 }
 
@@ -586,16 +673,18 @@ async function quoteEditDispatchNode(state: typeof ShieldBaseState.State) {
 
   // Switch product: reset data but keep quote lane active.
   if (nextProduct !== current.product) {
+    const firstField = listRequiredFields(nextProduct)[0] ?? null;
     const reset: QuoteState = {
       ...createInitialQuoteState(),
       active: true,
       status: "drafting",
       product: nextProduct,
       step: "collect_details",
-      pendingField: null,
+      pendingField: firstField,
       lastUpdatedAt: nowIso(),
     };
-    return { quote: reset, mode: "quotation" satisfies Mode, next: "quote_collect_details" as const };
+    const prompt = formatRequiredFields(nextProduct);
+    return { messages: [new AIMessage(prompt)], quote: reset, mode: "quotation" satisfies Mode, next: END };
   }
 
   if (field) {
@@ -624,8 +713,7 @@ async function quoteEditDispatchNode(state: typeof ShieldBaseState.State) {
 
 async function quoteEntryNode(state: typeof ShieldBaseState.State) {
   // Single entry/dispatch point for the quote lane.
-  const text = lastHumanText(state.messages);
-  const restart = isRestartIntent(text);
+  const restart = state.route === "restart";
 
   if (restart) {
     const quote: QuoteState = {
@@ -683,8 +771,9 @@ async function quoteIdentifyProductNode(state: typeof ShieldBaseState.State) {
 
   quote.product = detected;
   quote.step = "collect_details";
-  quote.pendingField = null;
-  return { quote, mode: "quotation" satisfies Mode, next: "quote_collect_details" as const };
+  quote.pendingField = listRequiredFields(detected)[0] ?? null;
+  const prompt = formatRequiredFields(detected);
+  return { messages: [new AIMessage(prompt)], quote, mode: "quotation" satisfies Mode, next: END };
 }
 
 async function quoteCollectDetailsNode(state: typeof ShieldBaseState.State) {
@@ -754,16 +843,17 @@ async function quoteCollectDetailsNode(state: typeof ShieldBaseState.State) {
   nextQuote.status = "review";
   const prompt =
     `${formatQuoteDraftSummary(product, nextQuote.data)}\n\n` +
-    "Reply **confirm** to generate a quote, or tell me what to change. You can also say **finish later** or **cancel quote**.";
+    "I can generate the quote now, or we can adjust any detail first. If you prefer, we can also pause here.";
   return { messages: [new AIMessage(prompt)], quote: nextQuote, mode: "quotation" satisfies Mode, next: END };
 }
 
 async function quoteReviewNode(state: typeof ShieldBaseState.State) {
   const text = lastHumanText(state.messages);
   const quote = state.quote;
+  const decision = state.quoteIntentDecision;
   if (!quote.product) return { next: "quote_identify_product" as const };
 
-  if (isRestartIntent(text)) {
+  if (decision === "restart_quote") {
     const reset: QuoteState = {
       ...createInitialQuoteState(),
       active: true,
@@ -772,20 +862,20 @@ async function quoteReviewNode(state: typeof ShieldBaseState.State) {
       lastUpdatedAt: nowIso(),
     };
     const prompt = "No problem. Which type of quote do you want now: **auto**, **home**, or **life**?";
-    return { messages: [new AIMessage(prompt)], quote: reset, mode: "quotation" satisfies Mode, next: END };
+    return { messages: [new AIMessage(prompt)], quote: reset, quoteIntentDecision: null, mode: "quotation" satisfies Mode, next: END };
   }
 
-  if (isCancelIntent(text)) {
-    return { next: "quote_cancel_reset" as const };
+  if (decision === "cancel_quote") {
+    return { quoteIntentDecision: null, next: "quote_cancel_reset" as const };
   }
 
-  if (isPauseIntent(text)) {
-    return { next: "quote_pause_draft" as const };
+  if (decision === "pause_quote") {
+    return { quoteIntentDecision: null, next: "quote_pause_draft" as const };
   }
 
-  if (isConfirmIntent(text)) {
+  if (decision === "confirm_generate") {
     const next: QuoteState = { ...quote, status: "drafting", step: "validate", pendingField: null, lastUpdatedAt: nowIso() };
-    return { quote: next, mode: "quotation" satisfies Mode, next: "quote_validate" as const };
+    return { quote: next, quoteIntentDecision: null, mode: "quotation" satisfies Mode, next: "quote_validate" as const };
   }
 
   const extracted = extractQuoteEditsFromText(text);
@@ -796,11 +886,17 @@ async function quoteReviewNode(state: typeof ShieldBaseState.State) {
 
   if (quote.product && (isAdjustIntent(text) || hasEdits)) {
     const next: QuoteState = { ...quote, status: "drafting", step: "collect_details", pendingField: null, lastUpdatedAt: nowIso() };
-    return { quote: next, mode: "quotation" satisfies Mode, next: "quote_collect_details" as const };
+    return { quote: next, quoteIntentDecision: null, mode: "quotation" satisfies Mode, next: "quote_collect_details" as const };
   }
 
-  const prompt = "Reply **confirm** to generate a quote, or tell me what to change.";
-  return { messages: [new AIMessage(prompt)], quote: { ...quote, lastUpdatedAt: nowIso() }, mode: "quotation" satisfies Mode, next: END };
+  const prompt = "I can generate the quote now, or we can make changes first.";
+  return {
+    messages: [new AIMessage(prompt)],
+    quote: { ...quote, lastUpdatedAt: nowIso() },
+    quoteIntentDecision: null,
+    mode: "quotation" satisfies Mode,
+    next: END,
+  };
 }
 
 async function quoteValidateNode(state: typeof ShieldBaseState.State) {
@@ -827,7 +923,7 @@ async function quoteValidateNode(state: typeof ShieldBaseState.State) {
     }
 
     const question = pendingField ? questionFor(product, pendingField) : "Please correct that detail.";
-    const prompt = `That detail doesn’t look right: ${message}\n\n${question}\n\nYou can also say **start over**.`;
+    const prompt = `That detail doesn’t look right: ${message}\n\n${question}\n\nIf you prefer, we can restart this quote from scratch.`;
     const quote: QuoteState = {
       ...state.quote,
       status: "drafting",
@@ -852,7 +948,7 @@ async function quoteGenerateNode(state: typeof ShieldBaseState.State) {
     result = computeQuote(product, state.quote.data);
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unable to generate quote.";
-    const prompt = `I couldn’t generate a quote yet: ${message}\n\nPlease adjust the details, or say **start over**.`;
+    const prompt = `I couldn’t generate a quote yet: ${message}\n\nPlease adjust the details, and if you prefer, we can restart from scratch.`;
     const quote: QuoteState = { ...state.quote, status: "drafting", step: "collect_details", pendingField: null, lastQuote: null, lastUpdatedAt: nowIso() };
     return { messages: [new AIMessage(prompt)], quote, mode: "quotation" satisfies Mode, next: END };
   }
@@ -877,43 +973,61 @@ async function quoteGenerateNode(state: typeof ShieldBaseState.State) {
 async function quoteConfirmNode(state: typeof ShieldBaseState.State) {
   const text = lastHumanText(state.messages);
   const quote = state.quote;
+  const decision = state.quoteIntentDecision;
 
-  if (isRestartIntent(text)) {
+  if (decision === "restart_quote") {
     const reset: QuoteState = { ...createInitialQuoteState(), active: true, status: "drafting", step: "identify_product", lastUpdatedAt: nowIso() };
     const prompt = "No problem. Which type of quote do you want now: **auto**, **home**, or **life**?";
-    return { messages: [new AIMessage(prompt)], quote: reset, mode: "quotation" satisfies Mode, next: END };
+    return { messages: [new AIMessage(prompt)], quote: reset, quoteIntentDecision: null, mode: "quotation" satisfies Mode, next: END };
   }
 
-  if (isAcceptIntent(text)) {
+  if (decision === "cancel_quote") {
+    return { quoteIntentDecision: null, next: "quote_cancel_reset" as const };
+  }
+
+  if (decision === "pause_quote") {
+    return { quoteIntentDecision: null, next: "quote_pause_draft" as const };
+  }
+
+  if (decision === "accept_quote") {
     const done: QuoteState = { ...quote, active: false, status: "inactive", step: "done", pendingField: null, lastUpdatedAt: nowIso() };
     const prompt =
-      "Great—I can’t bind coverage from chat, but I’ve recorded your selection. If you want another quote, just say **quote** and the product type.";
-    return { messages: [new AIMessage(prompt)], quote: done, mode: "conversational" satisfies Mode, next: END };
+      "Great! I've recorded your selection. If you need anything else, please let me know.";
+    return { messages: [new AIMessage(prompt)], quote: done, quoteIntentDecision: null, mode: "conversational" satisfies Mode, next: END };
   }
 
   // Switch product mid-confirmation.
   const switched = detectProduct(text);
   if (switched && switched !== quote.product) {
+    const firstField = listRequiredFields(switched)[0] ?? null;
     const reset: QuoteState = {
       ...createInitialQuoteState(),
       active: true,
       status: "drafting",
       product: switched,
       step: "collect_details",
+      pendingField: firstField,
       lastUpdatedAt: nowIso(),
     };
-    return { quote: reset, mode: "quotation" satisfies Mode, next: "quote_collect_details" as const };
+    const prompt = formatRequiredFields(switched);
+    return { messages: [new AIMessage(prompt)], quote: reset, quoteIntentDecision: null, mode: "quotation" satisfies Mode, next: END };
   }
 
   if (quote.product && isAdjustIntent(text)) {
     // Treat this as more input and continue collecting; the collect node will either
     // ask the next missing field or regenerate a quote.
     const next: QuoteState = { ...quote, status: "drafting", step: "collect_details", pendingField: null, lastQuote: null, lastUpdatedAt: nowIso() };
-    return { quote: next, mode: "quotation" satisfies Mode, next: "quote_collect_details" as const };
+    return { quote: next, quoteIntentDecision: null, mode: "quotation" satisfies Mode, next: "quote_collect_details" as const };
   }
 
-  const prompt = "Reply **accept**, tell me what to adjust, or say **start over**.";
-  return { messages: [new AIMessage(prompt)], quote: { ...quote, lastUpdatedAt: nowIso() }, mode: "quotation" satisfies Mode, next: END };
+  const prompt = "I can proceed with this quote, adjust details, or restart from scratch — whichever you prefer.";
+  return {
+    messages: [new AIMessage(prompt)],
+    quote: { ...quote, lastUpdatedAt: nowIso() },
+    quoteIntentDecision: null,
+    mode: "quotation" satisfies Mode,
+    next: END,
+  };
 }
 
 const checkpointer: BaseCheckpointSaver = await (async () => {
