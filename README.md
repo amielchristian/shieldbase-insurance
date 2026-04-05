@@ -1,6 +1,4 @@
-# Turborepo starter
-
-## ShieldBase chat environment
+## ShieldBase Insurance Chatbot
 
 Chat API (Fastify + LangGraph):
 
