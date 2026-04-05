@@ -1,35 +1,88 @@
 ## ShieldBase Insurance Chatbot
 
-Chat API (Fastify + LangGraph):
+Insurance assistant built with Fastify + LangGraph:
 
-- `GET /api/chat/welcome` — hardcoded first assistant message (copy in `apps/server/src/prompts/chat.ts`).
-- `POST /api/chat` — hybrid reply (RAG + quoting); expects a `sessionId` for stateful sessions and returns `{ content, meta, sessionId }`.
-- `POST /api/chat/quote/clear` — clears the current quote draft state for a session (`{ sessionId }`).
-- `GET /api/graph/diagram` — HTML page that **renders** the chat graph as Mermaid (source from `compiledChatGraph.getGraphAsync().drawMermaid()`; open in a browser; proxied under `/api` in Vite dev).
+- Conversational Q&A over a ShieldBase knowledge base (RAG).
+- Guided transactional quote workflow (auto, home, life).
 
-Set these before running `apps/server`:
+## Setup
 
-- `OPENROUTER_API_KEY` (required)
-- `OPENROUTER_MODEL` (optional, defaults to `openai/gpt-4o-mini`)
-- `OPENROUTER_EMBEDDINGS_MODEL` (optional, defaults to `text-embedding-3-small`)
-- `OPENROUTER_HTTP_REFERER` (optional)
-- `OPENROUTER_APP_NAME` (optional)
+### 1) Prerequisites
 
-Optional chat/session settings:
+- Node.js `>= 18`
+- `pnpm` `9.x`
 
-- `CHAT_CHECKPOINT_DB_PATH` (optional, default `./data/chat-checkpoints.sqlite`) — durable session storage (SQLite via Node’s `node:sqlite`).
-- `CHAT_CHECKPOINT_MAX_PER_THREAD` (optional) — if set, prunes older checkpoints per session.
-- `QUOTE_DRAFT_TTL_MINUTES` (optional, default `60`) — pauses an active quote draft after inactivity.
+### 2) Install dependencies
 
-Note: `node:sqlite` is still experimental in Node and may emit an ExperimentalWarning. The server falls back to an in-memory checkpointer if SQLite is unavailable.
+From the repository root:
 
-RAG tuning (optional):
+```bash
+pnpm install
+```
 
-- `RAG_MIN_COSINE_SIMILARITY` — minimum cosine similarity for dense retrieval before hybrid merge (default `0.25`; if no chunk passes, the best match is kept).
-- `RAG_RRF_K` — reciprocal rank fusion constant (default `60`).
-- `RAG_EMBEDDING_CACHE_DIR` — directory for embedding disk cache (default `~/.cache/shieldbase-rag`). Omit or clear to rebuild embeddings after KB changes.
+### 3) Configure environment variables
 
-The chat client uses `/api/chat` and proxies to `http://localhost:3001` in Vite by default. Override proxy target with `VITE_SERVER_URL` if needed.
+The server reads env vars from `apps/server/.env`.
+
+1. Copy the template:
+
+```bash
+cp apps/server/.env.example apps/server/.env
+```
+
+2. Set at least:
+   - `OPENROUTER_API_KEY` (required)
+
+3. Optional OpenRouter settings:
+   - `OPENROUTER_MODEL` (default: `openai/gpt-4o-mini`)
+   - `OPENROUTER_EMBEDDINGS_MODEL` (default: `text-embedding-3-small`)
+   - `OPENROUTER_HTTP_REFERER`
+   - `OPENROUTER_APP_NAME`
+
+4. Optional server/session settings:
+   - `PORT` (default: `3001`)
+   - `HOST` (default: `0.0.0.0`)
+   - `CHAT_CHECKPOINT_DB_PATH` (default: `./data/chat-checkpoints.sqlite`)
+   - `CHAT_CHECKPOINT_MAX_PER_THREAD`
+   - `QUOTE_DRAFT_TTL_MINUTES` (default: `60`)
+
+5. Optional RAG tuning:
+   - `RAG_MIN_COSINE_SIMILARITY` (default: `0.25`)
+   - `RAG_RRF_K` (default: `60`)
+   - `RAG_EMBEDDING_CACHE_DIR` (default: `~/.cache/shieldbase-rag`)
+
+Note: `node:sqlite` is experimental in Node and may show an ExperimentalWarning. If unavailable, the server falls back to an in-memory checkpointer.
+
+### 4) Run the app
+
+From the repository root:
+
+```bash
+pnpm dev
+```
+
+By default:
+
+- Server API runs at `http://localhost:3001`
+- Marketing app runs with Vite (port shown in terminal)
+- Widget demo runs with Vite (port shown in terminal)
+- Chat demo is deprecated, but can be run with Vite (port shown in terminal)
+
+### 5) Useful API routes
+
+- `GET /api/chat/welcome` - returns the static first assistant message.
+- `POST /api/chat` - returns `{ content, meta, sessionId }`.
+- `POST /api/chat/quote/clear` - clears the active quote draft for a `sessionId`.
+- `GET /api/graph/diagram` - renders the compiled LangGraph as Mermaid HTML.
+
+### 6) Verify before shipping changes
+
+From the repository root:
+
+```bash
+pnpm exec turbo run check-types --filter=server --filter=chat
+pnpm exec turbo run test --filter=server
+```
 
 ## Specifications
 Below are the instructions for the project.
