@@ -61,6 +61,14 @@ function parseBlocks(md: string): MdBlock[] {
       const items: string[] = []
       while (i < lines.length) {
         const l = lines[i] ?? ''
+        if (!l.trim()) {
+          const next = lines[i + 1] ?? ''
+          if (/^\s*[-*+]\s+/.test(next)) {
+            i += 1
+            continue
+          }
+          break
+        }
         const m = l.match(/^\s*[-*+]\s+(.+)\s*$/)
         if (!m) break
         items.push(m[1]!.trim())
@@ -74,6 +82,14 @@ function parseBlocks(md: string): MdBlock[] {
       const items: string[] = []
       while (i < lines.length) {
         const l = lines[i] ?? ''
+        if (!l.trim()) {
+          const next = lines[i + 1] ?? ''
+          if (/^\s*\d+\.\s+/.test(next)) {
+            i += 1
+            continue
+          }
+          break
+        }
         const m = l.match(/^\s*\d+\.\s+(.+)\s*$/)
         if (!m) break
         items.push(m[1]!.trim())
