@@ -39,6 +39,13 @@ function ensureStyles(container: Document | ShadowRoot) {
   container.appendChild(style)
 }
 
+function createRootElement() {
+  const rootElement = document.createElement('div')
+  rootElement.style.width = '100%'
+  rootElement.style.height = '100%'
+  return rootElement
+}
+
 export function mount(target: HTMLElement | string, options: WidgetOptions = {}): WidgetHandle {
   const host = resolveTarget(target)
   if (mounted.has(host)) {
@@ -52,11 +59,11 @@ export function mount(target: HTMLElement | string, options: WidgetOptions = {})
   if (useShadowDom) {
     shadowRoot = host.attachShadow({ mode: 'open' })
     ensureStyles(shadowRoot)
-    rootElement = document.createElement('div')
+    rootElement = createRootElement()
     shadowRoot.appendChild(rootElement)
   } else {
     ensureStyles(document)
-    rootElement = document.createElement('div')
+    rootElement = createRootElement()
     host.appendChild(rootElement)
   }
 
