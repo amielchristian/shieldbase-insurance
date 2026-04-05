@@ -392,7 +392,7 @@ export default function App() {
                     ShieldBase
                   </div>
                   <div className="text-xs tracking-[0.18em] text-ink/60">
-                    Insurance clarity landing
+                    Insurance made understandable
                   </div>
                 </div>
               </a>
@@ -439,16 +439,15 @@ export default function App() {
                     </div>
 
                     <h1 className="mt-6 font-display text-4xl leading-[0.98] tracking-[-0.04em] text-ink sm:text-6xl">
-                      Coverage, clarified.
+                      Insurance that explains itself.
                       <span className="block text-ink/70">
-                        So you know what you’re buying.
+                        So you can choose with confidence.
                       </span>
                     </h1>
                     <p className="mt-6 max-w-xl text-pretty text-base leading-relaxed text-ink/75 sm:text-lg">
-                      ShieldBase is a regional carrier concept built around one
-                      principle: insurance should be readable. Straightforward
-                      coverage, digital-first service, and a claims process you
-                      can actually follow.
+                      ShieldBase helps you compare coverage without decoding
+                      jargon. Plain-language explanations, digital self-service,
+                      and real support when life gets messy.
                     </p>
                     <div className="mt-8 flex flex-wrap items-center gap-3">
                       <Anchor href="#products" tone="primary">
@@ -473,7 +472,7 @@ export default function App() {
                             Service channels
                           </div>
                           <div className="mt-1 font-display text-2xl tracking-[-0.02em]">
-                            Everything in one place
+                            Support built around your day
                           </div>
                         </div>
                         <div className="grid h-12 w-12 place-items-center rounded-2xl bg-pine text-paper">
@@ -483,10 +482,10 @@ export default function App() {
 
                       <ul className="mt-6 space-y-3 text-sm leading-relaxed text-ink/75">
                         {[
-                          'Online quotes and policy documents.',
-                          'Mobile app for ID cards, payments, and claim initiation.',
-                          '24/7 claims reporting line for urgent incidents.',
-                          'Business hours for policy changes and billing questions.',
+                          'Get quotes online in minutes with side-by-side plan options.',
+                          'Access ID cards, billing, and claim status in one portal.',
+                          'Start a claim any time, day or night, from phone or web.',
+                          'Talk to licensed agents for policy updates and billing help.',
                         ].map((item) => (
                           <li key={item} className="flex items-start gap-3">
                             <span className="mt-1 inline-block h-2 w-2 rounded-full bg-coral" />
@@ -497,11 +496,10 @@ export default function App() {
 
                       <div className="mt-7 rounded-2xl border border-ink/10 bg-paper p-4 text-xs leading-relaxed text-ink/65">
                         <span className="font-semibold text-ink/80">
-                          Important:
+                          Heads up:
                         </span>{' '}
-                      Names, numbers, and processes shown here may change —
-                      your declarations page and endorsements are the source
-                      of truth.
+                      Coverage terms, limits, and availability vary by state.
+                      Your declarations page and endorsements always control.
                       </div>
                     </div>
                   </div>
@@ -518,7 +516,7 @@ export default function App() {
               <SectionTitle
                 eyebrow="Coverage Basics"
                 title="Auto, home, and life — explained like a human wrote it."
-                description="Select a product to see what’s typically included, what’s commonly excluded, and the exact kinds of questions to ask before you bind."
+                description="Pick a product to quickly see what is usually covered, what is not, and which details to confirm before you buy."
               />
             </div>
 
@@ -619,8 +617,8 @@ export default function App() {
             <div data-reveal className="reveal">
               <SectionTitle
                 eyebrow="Plans & Tiers"
-                title="Three convenience tiers — for marketing clarity, not fine print."
-                description="Actual premiums use rating factors (location, limits, deductibles, driving history, home characteristics, underwriting, and more). These tiers are labels to help you compare."
+                title="Three tiers that match how people actually shop."
+                description="Your exact premium depends on rating factors like location, limits, deductibles, driving history, property profile, and underwriting results."
               />
             </div>
 
@@ -657,7 +655,7 @@ export default function App() {
             <SectionTitle
               eyebrow="Claims"
               title="A process you can follow at 2 a.m."
-              description="When something goes wrong, clarity matters more than optimism. Here’s the typical flow and the deadlines you should know to ask about."
+              description="When something goes wrong, speed and clarity matter. Here is the typical flow and the timelines worth confirming on your policy."
             />
           </div>
 
@@ -707,7 +705,7 @@ export default function App() {
             </div>
 
             <div data-reveal className="reveal space-y-4">
-              <Card title="Deadlines (illustrative)" Icon={Clock3}>
+              <Card title="Common deadlines" Icon={Clock3}>
                 <ul className="mt-3 space-y-2">
                   <li>
                     Auto/property: notify as soon as practical; many losses cite
@@ -741,7 +739,7 @@ export default function App() {
               <SectionTitle
                 eyebrow="FAQ"
                 title="The questions people actually ask."
-                description="Short, plain answers to the most common things that derail a purchase — eligibility, cancellation, billing, discounts, and privacy."
+                description="Quick answers on eligibility, cancellations, billing, discounts, and privacy before you commit."
               />
             </div>
 
@@ -808,15 +806,15 @@ export default function App() {
               <div className="flex flex-col items-start justify-between gap-6 md:flex-row md:items-center">
                 <div>
                   <div className="text-xs font-semibold uppercase tracking-[0.18em] text-ink/60">
-                    The fine print, without the fine print energy
+                    Straight answers, then the paperwork
                   </div>
                   <div className="mt-2 font-display text-3xl tracking-[-0.03em]">
-                    Your policy contract wins.
+                    Your policy wording always wins.
                   </div>
                   <p className="mt-3 max-w-2xl text-sm leading-relaxed text-ink/72">
-                    This landing page shares ShieldBase coverage highlights.
-                    For coverage decisions, rely on your declarations page,
-                    endorsements, and licensed advice.
+                    This page is designed to help you compare plans faster.
+                    For final coverage decisions, rely on your declarations page,
+                    endorsements, and licensed guidance.
                   </p>
                 </div>
                 <Anchor href="#top" tone="ghost">
@@ -845,7 +843,7 @@ export default function App() {
                     ShieldBase
                   </div>
                   <div className="text-xs tracking-[0.18em]">
-                    Insurance clarity landing
+                    Insurance made understandable
                   </div>
                 </div>
               </div>
@@ -863,7 +861,7 @@ export default function App() {
             </div>
             <div className="mt-6 text-xs leading-relaxed text-ink/55">
               © {new Date().getFullYear()} ShieldBase Insurance. All
-              information is illustrative and may not reflect actual policy
+              coverage options are subject to state availability and policy
               terms.
             </div>
           </div>
