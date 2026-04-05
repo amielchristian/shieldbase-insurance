@@ -160,7 +160,7 @@ describe("invokeChatGraph (quote escape + resiliency)", () => {
       messages: [{ role: "user", content: "continue quote" }],
     });
     expect(resumed.meta.mode).toBe("quotation");
-    expect(resumed.content.toLowerCase()).toContain("model");
+    expect(resumed.content.toLowerCase()).toContain("driver age");
 
     rmSync(dbPath, { force: true });
   });

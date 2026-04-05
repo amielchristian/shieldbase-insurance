@@ -631,8 +631,7 @@ function detectFieldToEdit(text: string, product: QuoteProduct | null): { produc
   const fieldFromText = () => {
     if (/\b(driver age|age)\b/.test(lower)) return product === "life" ? "age" : "driverAge";
     if (/\bvehicle year|\byear\b/.test(lower)) return "vehicleYear";
-    if (/\bmake\b/.test(lower)) return "make";
-    if (/\bmodel\b/.test(lower)) return "model";
+    if (/\b(make and model|make\/model|make|model)\b/.test(lower)) return "makeModel";
     if (/\b(driving history|tickets?|violations?|accident)\b/.test(lower)) return "drivingHistory";
     if (/\bcoverage level|coverage\b/.test(lower)) return "coverageLevel";
     if (/\bproperty type\b/.test(lower)) return "propertyType";

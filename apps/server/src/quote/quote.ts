@@ -19,8 +19,7 @@ export type TermLengthYears = 10 | 20 | 30;
 
 export type AutoQuoteData = Partial<{
   vehicleYear: number;
-  make: string;
-  model: string;
+  makeModel: string;
   driverAge: number;
   drivingHistory: DrivingHistory;
   coverageLevel: CoverageLevel;
@@ -80,8 +79,7 @@ export function createInitialQuoteState(): QuoteState {
 
 export const autoSchema = z.object({
   vehicleYear: z.number().int().min(1980).max(new Date().getFullYear()),
-  make: z.string().min(1),
-  model: z.string().min(1),
+  makeModel: z.string().min(1),
   driverAge: z.number().int().min(16).max(100),
   drivingHistory: z.enum(["clean", "minor_violations", "accident"]),
   coverageLevel: z.enum(["basic", "standard", "comprehensive"]),
@@ -176,10 +174,8 @@ export function applyPendingField(product: QuoteProduct, pendingField: string, t
         const n = parseNumber(value);
         return n ? { auto: { vehicleYear: n } } : {};
       }
-      case "make":
-        return { auto: { make: value } };
-      case "model":
-        return { auto: { model: value } };
+      case "makeModel":
+        return { auto: { makeModel: value } };
       case "driverAge": {
         const n = parseNumber(value);
         return n ? { auto: { driverAge: n } } : {};
@@ -272,7 +268,7 @@ export function extractQuoteEditsFromText(text: string): Partial<QuoteDataByProd
   const amountMatch = lower.match(/\$?\s*([0-9]{2,3})(?:[, ]?([0-9]{3}))+(?:\.\d+)?/);
   const termMatch = lower.match(/\b(10|20|30)\s*(?:year|yr)s?\b/);
 
-  // Simple make/model heuristic: "2019 toyota camry" -> make=toyota model=camry
+  // Simple make/model heuristic: "2019 toyota camry" -> makeModel="TOYOTA CAMRY"
   const makeModelMatch = lower.match(/\b(19[8-9]\d|20\d{2})\s+([a-z0-9]+)\s+([a-z0-9]+)\b/);
 
   if (coverageLevel) {
@@ -294,8 +290,7 @@ export function extractQuoteEditsFromText(text: string): Partial<QuoteDataByProd
   if (makeModelMatch?.[2] && makeModelMatch?.[3]) {
     edits.auto = {
       ...(edits.auto ?? {}),
-      make: makeModelMatch[2].toUpperCase(),
-      model: makeModelMatch[3].toUpperCase(),
+      makeModel: `${makeModelMatch[2]} ${makeModelMatch[3]}`.toUpperCase(),
     };
   }
   if (ageMatch?.[2]) {
@@ -351,8 +346,7 @@ export function getMissingFields(product: QuoteProduct, data: QuoteDataByProduct
     const d = data.auto;
     const missing: string[] = [];
     if (!d.vehicleYear) missing.push("vehicleYear");
-    if (!d.make) missing.push("make");
-    if (!d.model) missing.push("model");
+    if (!d.makeModel) missing.push("makeModel");
     if (!d.driverAge) missing.push("driverAge");
     if (!d.drivingHistory) missing.push("drivingHistory");
     if (!d.coverageLevel) missing.push("coverageLevel");
@@ -378,7 +372,7 @@ export function getMissingFields(product: QuoteProduct, data: QuoteDataByProduct
 
 export function listRequiredFields(product: QuoteProduct): string[] {
   if (product === "auto") {
-    return ["vehicleYear", "make", "model", "driverAge", "drivingHistory", "coverageLevel"];
+    return ["vehicleYear", "makeModel", "driverAge", "drivingHistory", "coverageLevel"];
   }
   if (product === "home") {
     return ["propertyType", "location", "estimatedValue", "coverageLevel"];
@@ -391,10 +385,8 @@ export function labelForField(product: QuoteProduct, field: string): string {
     switch (field) {
       case "vehicleYear":
         return "Vehicle year";
-      case "make":
-        return "Car make";
-      case "model":
-        return "Car model";
+      case "makeModel":
+        return "Car make and model";
       case "driverAge":
         return "Primary driver age";
       case "drivingHistory":
@@ -438,10 +430,8 @@ function descriptionForField(product: QuoteProduct, field: string): string {
     switch (field) {
       case "vehicleYear":
         return "The vehicle's model year (e.g. 2020).";
-      case "make":
-        return "The manufacturer (e.g. Toyota).";
-      case "model":
-        return "The vehicle model (e.g. Camry).";
+      case "makeModel":
+        return "The manufacturer and model together (e.g. Toyota Camry).";
       case "driverAge":
         return "Age of the primary driver.";
       case "drivingHistory":
@@ -492,10 +482,8 @@ export function questionForField(product: QuoteProduct, field: string): string {
     switch (field) {
       case "vehicleYear":
         return "Vehicle year?";
-      case "make":
-        return "Car make?";
-      case "model":
-        return "Car model?";
+      case "makeModel":
+        return "Car make and model?";
       case "driverAge":
         return "Primary driver age?";
       case "drivingHistory":
@@ -648,7 +636,7 @@ export function formatQuoteDraftSummary(product: QuoteProduct, data: QuoteDataBy
     const d = data.auto;
     return [
       "**Auto quote details**",
-      `- Vehicle: ${d.vehicleYear ?? "?"} ${d.make ?? "?"} ${d.model ?? "?"}`.trim(),
+      `- Vehicle: ${d.vehicleYear ?? "?"} ${d.makeModel ?? "?"}`.trim(),
       `- Driver age: ${d.driverAge ?? "?"}`,
       `- Driving history: ${d.drivingHistory ?? "?"}`,
       `- Coverage level: ${d.coverageLevel ?? "?"}`,

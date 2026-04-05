@@ -20,8 +20,7 @@ describe("quote utility behavior", () => {
     const result = computeQuote("auto", {
       auto: {
         vehicleYear: currentYear,
-        make: "TOYOTA",
-        model: "CAMRY",
+        makeModel: "TOYOTA CAMRY",
         driverAge: 30,
         drivingHistory: "clean",
         coverageLevel: "standard",
@@ -74,8 +73,7 @@ describe("quote utility behavior", () => {
     expect(() =>
       autoSchema.parse({
         vehicleYear: new Date().getFullYear() + 1,
-        make: "X",
-        model: "Y",
+        makeModel: "X Y",
         driverAge: 22,
         drivingHistory: "clean",
         coverageLevel: "basic",
@@ -104,8 +102,7 @@ describe("quote utility behavior", () => {
   it("extracts product-specific edits from free text", () => {
     const edits = extractQuoteEditsFromText("2019 toyota camry, age 42, comprehensive, no accidents");
     expect(edits.auto?.vehicleYear).toBe(2019);
-    expect(edits.auto?.make).toBe("TOYOTA");
-    expect(edits.auto?.model).toBe("CAMRY");
+    expect(edits.auto?.makeModel).toBe("TOYOTA CAMRY");
     expect(edits.auto?.driverAge).toBe(42);
     expect(edits.auto?.drivingHistory).toBe("clean");
     expect(edits.auto?.coverageLevel).toBe("comprehensive");
@@ -125,14 +122,13 @@ describe("quote utility behavior", () => {
 
   it("reports missing fields in required order", () => {
     const data: QuoteDataByProduct = {
-      auto: { make: "Toyota" },
+      auto: { makeModel: "Toyota Camry" },
       home: { propertyType: "condo" },
       life: { age: 32 },
     };
 
     expect(getMissingFields("auto", data)).toEqual([
       "vehicleYear",
-      "model",
       "driverAge",
       "drivingHistory",
       "coverageLevel",
@@ -152,9 +148,9 @@ describe("quote utility behavior", () => {
 
   it("merges quote data shallowly by latest values", () => {
     const merged = mergeQuoteData(
-      { make: "TOYOTA", model: "CAMRY" },
-      { model: "CIVIC" }
+      { makeModel: "TOYOTA CAMRY" },
+      { makeModel: "HONDA CIVIC" }
     );
-    expect(merged).toEqual({ make: "TOYOTA", model: "CIVIC" });
+    expect(merged).toEqual({ makeModel: "HONDA CIVIC" });
   });
 });
