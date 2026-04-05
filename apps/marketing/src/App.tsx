@@ -380,8 +380,12 @@ export default function App() {
         <header className="sticky top-0 z-30 border-b border-ink/10 bg-paper/95">
           <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-4 sm:px-6">
               <a href="#top" className="group flex items-center gap-3">
-                <span className="grid h-10 w-10 place-items-center rounded-2xl bg-ink text-paper shadow-[0_18px_40px_-30px_rgba(9,17,19,0.18)]">
-                  <Shield className="h-5 w-5" />
+                <span className="h-10 w-10 overflow-hidden rounded-2xl shadow-[0_18px_40px_-30px_rgba(9,17,19,0.18)]">
+                  <img
+                    src="/favicon.svg"
+                    alt="ShieldBase logo"
+                    className="h-full w-full object-cover"
+                  />
                 </span>
                 <div className="leading-tight">
                   <div className="font-display text-lg tracking-[-0.02em]">
@@ -829,8 +833,12 @@ export default function App() {
           <div className="mx-auto max-w-6xl px-4 py-10 text-sm text-ink/70 sm:px-6">
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex items-center gap-3">
-                <span className="grid h-10 w-10 place-items-center rounded-2xl bg-ink text-paper shadow-[0_18px_40px_-30px_rgba(9,17,19,0.18)]">
-                  <Shield className="h-5 w-5" />
+                <span className="h-10 w-10 overflow-hidden rounded-2xl shadow-[0_18px_40px_-30px_rgba(9,17,19,0.18)]">
+                  <img
+                    src="/favicon.svg"
+                    alt="ShieldBase logo"
+                    className="h-full w-full object-cover"
+                  />
                 </span>
                 <div className="leading-tight">
                   <div className="font-display text-base tracking-[-0.02em] text-ink">

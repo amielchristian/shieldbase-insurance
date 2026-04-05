@@ -49,6 +49,7 @@ export function ShieldBaseWidget(props: {
   apiBaseUrl?: string
   storageKey?: string
   title?: string
+  brandIconUrl?: string
   suggestions?: readonly string[]
 }) {
   const titleId = useId()
@@ -66,6 +67,7 @@ export function ShieldBaseWidget(props: {
   const endRef = useRef<HTMLDivElement>(null)
 
   const title = useMemo(() => props.title ?? 'ShieldBase Support', [props.title])
+  const brandIconUrl = props.brandIconUrl
   const apiBaseUrl = props.apiBaseUrl
 
   useEffect(() => {
@@ -164,7 +166,11 @@ export function ShieldBaseWidget(props: {
       <header className="sbw-header">
         <div className="sbw-title">
           <div className="sbw-badge" aria-hidden>
-            SB
+            {brandIconUrl ? (
+              <img src={brandIconUrl} alt="" className="sbw-brandIcon" />
+            ) : (
+              'SB'
+            )}
           </div>
           <div className="sbw-titleText">
             <h1 id={titleId}>{title}</h1>
@@ -195,7 +201,7 @@ export function ShieldBaseWidget(props: {
           <ul className="sbw-messages">
             {messages.map((msg) => (
               <li key={msg.id}>
-                <MessageRow message={msg} />
+                <MessageRow message={msg} brandIconUrl={brandIconUrl} />
               </li>
             ))}
           </ul>
@@ -254,12 +260,24 @@ export function ShieldBaseWidget(props: {
   )
 }
 
-function MessageRow({ message }: { message: ChatMessage }) {
+function MessageRow({
+  message,
+  brandIconUrl,
+}: {
+  message: ChatMessage
+  brandIconUrl?: string
+}) {
   const isUser = message.role === 'user'
   return (
     <div className={`sbw-row ${isUser ? 'sbw-row--user' : 'sbw-row--assistant'}`}>
       <div className="sbw-avatar" aria-hidden>
-        {isUser ? 'You' : 'SB'}
+        {isUser ? (
+          'You'
+        ) : brandIconUrl ? (
+          <img src={brandIconUrl} alt="" className="sbw-brandIcon sbw-brandIcon--sm" />
+        ) : (
+          'SB'
+        )}
       </div>
       <div className={`sbw-bubble ${isUser ? 'sbw-bubble--user' : 'sbw-bubble--assistant'}`}>
         <div className="sbw-message">{renderMarkdown(message.content)}</div>

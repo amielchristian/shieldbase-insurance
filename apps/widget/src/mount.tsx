@@ -6,6 +6,7 @@ export type WidgetOptions = {
   apiBaseUrl?: string
   storageKey?: string
   title?: string
+  brandIconUrl?: string
   useShadowDom?: boolean
 }
 
@@ -65,6 +66,7 @@ export function mount(target: HTMLElement | string, options: WidgetOptions = {})
       apiBaseUrl={options.apiBaseUrl}
       storageKey={options.storageKey}
       title={options.title}
+      brandIconUrl={options.brandIconUrl}
     />,
   )
 
